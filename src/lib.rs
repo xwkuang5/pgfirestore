@@ -181,6 +181,27 @@ fn fs_value_string(cstr: &core::ffi::CStr) -> FsValue {
 }
 
 #[pg_extern]
+fn fs_value_bytes(cstr: &core::ffi::CStr) -> FsValue {
+    FsValue::Bytes(Vec::from(cstr.to_bytes()))
+}
+
+#[pg_extern]
+fn fs_value_geo(latitude: &core::ffi::CStr, longtitude: &core::ffi::CStr) -> FsValue {
+    let lat = fs_value_number(latitude);
+    let long = fs_value_number(longtitude);
+    match (lat, long) {
+        (FsValue::Number(FsNumber::Number(lat_)), FsValue::Number(FsNumber::Number(long_))) => {
+            if !lat_.is_f64() || !long_.is_f64() {
+                panic!("Failed to parse latitude ('{}') and longtitude ('{}') as a Geo point", lat_, long_)
+            }
+            FsValue::GeoPoint(FsNumber::Number(lat_), FsNumber::Number(long_))
+        },
+        _ => panic!("Failed to parse latitude and longtitude as a Geo point")
+    }
+}
+
+
+#[pg_extern]
 fn fs_value_samples() -> Vec<FsValue> {
     vec![
         FsValue::NULL,
