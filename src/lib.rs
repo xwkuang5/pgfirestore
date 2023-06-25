@@ -124,6 +124,7 @@ impl FromStr for FsNumber {
  *             24 |             28 |             28 |             33
  */
 
+// TODO(louiskuang): implement custom input & output function based on json
 #[derive(
     Serialize,
     Deserialize,
