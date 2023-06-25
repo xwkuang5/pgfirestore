@@ -1,6 +1,6 @@
 use pgrx::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{collections::{BTreeMap}, str::FromStr, cmp::Ordering};
+use std::{cmp::Ordering, collections::BTreeMap, str::FromStr};
 
 pgrx::pg_module_magic!();
 
@@ -21,7 +21,7 @@ impl From<serde_json::Number> for FsNumber {
 impl Ord for FsNumber {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.eq(other) {
-            return Ordering::Equal
+            return Ordering::Equal;
         }
         match (&self, other) {
             (FsNumber::NAN, _) => Ordering::Less,
@@ -57,8 +57,8 @@ impl FromStr for FsNumber {
             _ => match serde_json::Number::from_str(s) {
                 Ok(number) => Ok(FsNumber::Number(number)),
                 Err(error) => Err(ParseFsNumberError(format!(
-                    "Failed to parse cstring as a FsNumber: {}",
-                    error
+                    "Failed to parse cstring ('{}') as a FsNumber: {}",
+                    s, error
                 ))),
             },
         }
@@ -72,7 +72,19 @@ impl FromStr for FsNumber {
  *             24 |             28 |             28 |             33
  */
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Debug, Clone, PostgresType, PostgresEq, PostgresOrd)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Debug,
+    Clone,
+    PostgresType,
+    PostgresEq,
+    PostgresOrd,
+)]
 pub enum FsValue {
     NULL,
     Boolean(bool),
@@ -102,10 +114,7 @@ fn fs_value_number(cstr: &core::ffi::CStr) -> FsValue {
     match cstr.to_str() {
         Ok(str) => match FsNumber::from_str(str) {
             Ok(number) => FsValue::Number(number),
-            Err(ParseFsNumberError(err_string)) => panic!(
-                "Failed to parse cstring as a serde_json Number: {}",
-                err_string
-            ),
+            Err(ParseFsNumberError(err_string)) => panic!("{}", err_string),
         },
         Err(error) => panic!("Failed to parse cstring as a UTF-8 string: {}", error),
     }
@@ -156,7 +165,9 @@ mod tests {
         let nan = CString::new("NaN").expect("CString::new failed");
         let number_1 = CString::new("1").expect("CString::new failed");
         assert!(crate::fs_value_number(nan.as_c_str()) == crate::fs_value_number(nan.as_c_str()));
-        assert!(crate::fs_value_number(nan.as_c_str()) < crate::fs_value_number(number_1.as_c_str()));
+        assert!(
+            crate::fs_value_number(nan.as_c_str()) < crate::fs_value_number(number_1.as_c_str())
+        );
     }
 }
 
