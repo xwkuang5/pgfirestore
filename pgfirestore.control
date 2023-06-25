@@ -1,0 +1,5 @@
+comment = 'pgfirestore:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/pgfirestore'
+relocatable = false
+superuser = true
