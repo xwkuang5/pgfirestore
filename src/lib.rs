@@ -55,7 +55,21 @@ impl FromStr for FsNumber {
             "-Infinity" => Ok(FsNumber::NegativeInfinity),
             "Infinity" => Ok(FsNumber::PositiveInfinity),
             _ => match serde_json::Number::from_str(s) {
-                Ok(number) => Ok(FsNumber::Number(number)),
+                Ok(number) => {
+                    if number.is_f64() {
+                        let number_as_f64 = number.as_f64().unwrap();
+                        if number_as_f64.is_nan() {
+                            return Ok(FsNumber::NAN);
+                        } else if number_as_f64.is_infinite() {
+                            if number_as_f64.is_sign_positive() {
+                                return Ok(FsNumber::PositiveInfinity);
+                            } else {
+                                return Ok(FsNumber::NegativeInfinity);
+                            }
+                        }
+                    }
+                    return Ok(FsNumber::Number(number));
+                }
                 Err(error) => Err(ParseFsNumberError(format!(
                     "Failed to parse cstring ('{}') as a FsNumber: {}",
                     s, error
