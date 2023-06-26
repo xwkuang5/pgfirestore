@@ -1,8 +1,64 @@
 use pgrx::prelude::*;
+use pgrx::{InOutFuncs, StringInfo};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{cmp::Ordering, collections::BTreeMap, str::FromStr};
 
 pgrx::pg_module_magic!();
+
+/**
+ * core::ffi::CStr JSON format
+ *
+ * Null: {
+ *  type: "NULL",
+ *  value: null,
+ * }
+ *
+ * Boolean: {
+ *  type: "BOOLEAN",
+ *  value: true,
+ * }
+ *
+ * Number: {
+ *  type: "NUMBER",
+ *  value: 1,
+ * }
+ *
+ * Date: {
+ *  type: "DATE",
+ *  value: 1
+ * }
+ *
+ * String: {
+ *  type: "STRING",
+ *  value: "hello world"
+ * }
+ *
+ * Bytes: {
+ *  type: "BYTES",
+ *  value: "0x1234"
+ * }
+ *
+ * Reference: {
+ *  type: "REFERENCE",
+ *  value: "/projects/test-project/databases/test-database/documents/Users/1"
+ * }
+ *
+ * Geo point: {
+ *  type: "GEOPOINT",
+ *  value: [1.0, 2.0]
+ * }
+ *
+ * Array: {
+ *  type: "ARRAY",
+ *  value: [object]
+ * }
+ *
+ * Map: {
+ *  type: "MAP",
+ *  value: object
+ * }
+ */
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub enum FsNumber {
@@ -138,6 +194,7 @@ impl FromStr for FsNumber {
     PostgresEq,
     PostgresOrd,
 )]
+#[inoutfuncs]
 pub enum FsValue {
     NULL,
     Boolean(bool),
@@ -150,6 +207,61 @@ pub enum FsValue {
     GeoPoint(FsNumber, FsNumber),
     Array(Vec<FsValue>),
     Map(BTreeMap<String, FsValue>),
+}
+
+impl InOutFuncs for FsValue {
+    fn input(input: &core::ffi::CStr) -> Self
+    where
+        Self: Sized,
+    {
+        match input.to_str() {
+            Ok(str) => match serde_json::from_str::<Value>(str) {
+                Ok(value) => FsValue::from(value),
+                Err(error) => panic!("Failed to parse input string as json: {}", error),
+            },
+            Err(error) => panic!("Failed to parse cstring as a UTF-8 string: {}", error),
+        }
+    }
+
+    fn output(&self, buffer: &mut StringInfo) {
+        let json_repr: Value = self.into_null_value();
+        buffer.push_str(json_repr.to_string().as_str())
+    }
+}
+
+// TODO(louiskuang): how to deal with the deeply nested match clauses
+// TODO(louiskuang): how to handle error from parsing
+// TODO(louiskuang): how to do check fail in Rust?
+impl From<Value> for FsValue {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Object(map) => match map.get("type") {
+                Some(value_type) => match value_type {
+                    Value::String(type_string) => match type_string.as_str() {
+                        "NULL" => FsValue::from_null_value(map.get("value").unwrap()),
+                        _ => panic!("invalid type string"),
+                    },
+                    _ => panic!("Type field value must be a string"),
+                },
+                None => panic!("FsValue must contain a type field"),
+            },
+            _ => panic!("Failed to parse json value as FsValue"),
+        }
+    }
+}
+
+impl FsValue {
+    fn from_null_value(value: &Value) -> FsValue {
+        assert!(value.eq(&Value::Null));
+        FsValue::NULL
+    }
+
+    fn into_null_value(&self) -> Value {
+        json!({
+            "type": "NULL",
+            "value": null,
+        })
+    }
 }
 
 #[pg_extern]
@@ -193,14 +305,16 @@ fn fs_value_geo(latitude: &core::ffi::CStr, longtitude: &core::ffi::CStr) -> FsV
     match (lat, long) {
         (FsValue::Number(FsNumber::Number(lat_)), FsValue::Number(FsNumber::Number(long_))) => {
             if !lat_.is_f64() || !long_.is_f64() {
-                panic!("Failed to parse latitude ('{}') and longtitude ('{}') as a Geo point", lat_, long_)
+                panic!(
+                    "Failed to parse latitude ('{}') and longtitude ('{}') as a Geo point",
+                    lat_, long_
+                )
             }
             FsValue::GeoPoint(FsNumber::Number(lat_), FsNumber::Number(long_))
-        },
-        _ => panic!("Failed to parse latitude and longtitude as a Geo point")
+        }
+        _ => panic!("Failed to parse latitude and longtitude as a Geo point"),
     }
 }
-
 
 #[pg_extern]
 fn fs_value_samples() -> Vec<FsValue> {
