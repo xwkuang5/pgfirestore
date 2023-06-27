@@ -2,6 +2,8 @@ use pgrx::prelude::*;
 use pgrx::{InOutFuncs, StringInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::fmt;
+use std::fmt::Display;
 use std::{cmp::Ordering, collections::BTreeMap, str::FromStr};
 
 pgrx::pg_module_magic!();
@@ -68,9 +70,20 @@ pub enum FsNumber {
     PositiveInfinity,
 }
 
-impl From<serde_json::Number> for FsNumber {
-    fn from(number: serde_json::Number) -> Self {
-        FsNumber::Number(number)
+type Result<T> = std::result::Result<T, FsError>;
+
+#[derive(Debug)]
+pub enum FsError {
+    InvalidValue(String),
+    InvalidType(String),
+}
+
+impl Display for FsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            FsError::InvalidValue(err_msg) => write!(f, "InvalidValue: {}", err_msg),
+            FsError::InvalidType(err_msg) => write!(f, "InvalidType: {}", err_msg),
+        }
     }
 }
 
@@ -105,7 +118,7 @@ impl Ord for FsNumber {
                         return left_as_i64.cmp(&right.as_i64().unwrap());
                     } else if right.is_u64() {
                         let right_as_u64 = right.as_u64().unwrap();
-                        let right_as_i64: Result<i64, _> = right_as_u64.try_into();
+                        let right_as_i64: std::result::Result<i64, _> = right_as_u64.try_into();
                         return match right_as_i64 {
                             Ok(value) => left_as_i64.cmp(&value),
                             Err(_) => Ordering::Less,
@@ -120,7 +133,7 @@ impl Ord for FsNumber {
                         return left_as_u64.cmp(&right.as_u64().unwrap());
                     } else if right.is_i64() {
                         let right_as_i64 = right.as_i64().unwrap();
-                        let left_as_i64: Result<i64, _> = left_as_u64.try_into();
+                        let left_as_i64: std::result::Result<i64, _> = left_as_u64.try_into();
                         return match left_as_i64 {
                             Ok(value) => value.cmp(&right_as_i64),
                             Err(_) => Ordering::Greater,
@@ -155,16 +168,16 @@ impl PartialOrd for FsNumber {
 pub struct ParseFsNumberError(String);
 
 impl FromStr for FsNumber {
-    type Err = ParseFsNumberError;
+    type Err = FsError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         match s {
             "NaN" => Ok(FsNumber::NAN),
             "-Infinity" => Ok(FsNumber::NegativeInfinity),
             "Infinity" => Ok(FsNumber::PositiveInfinity),
             _ => match serde_json::Number::from_str(s) {
                 Ok(number) => Ok(FsNumber::Number(number)),
-                Err(error) => Err(ParseFsNumberError(format!(
+                Err(error) => Err(FsError::InvalidValue(format!(
                     "Failed to parse cstring ('{}') as a FsNumber: {}",
                     s, error
                 ))),
@@ -180,7 +193,6 @@ impl FromStr for FsNumber {
  *             24 |             28 |             28 |             33
  */
 
-// TODO(louiskuang): implement custom input & output function based on json
 #[derive(
     Serialize,
     Deserialize,
@@ -214,53 +226,89 @@ impl InOutFuncs for FsValue {
     where
         Self: Sized,
     {
-        match input.to_str() {
-            Ok(str) => match serde_json::from_str::<Value>(str) {
-                Ok(value) => FsValue::from(value),
-                Err(error) => panic!("Failed to parse input string as json: {}", error),
-            },
-            Err(error) => panic!("Failed to parse cstring as a UTF-8 string: {}", error),
+        let value = serde_json::from_str::<Value>(
+            input
+                .to_str()
+                .expect(&format!("Failed to parse cstring as a UTF-8 string")),
+        )
+        .expect("Failed to parse cstring as a serde_json object");
+        match FsValue::from(value) {
+            Ok(value) => value,
+            Err(error) => panic!("{}", error),
         }
     }
 
     fn output(&self, buffer: &mut StringInfo) {
-        let json_repr: Value = self.into_null_value();
+        let json_repr = match self {
+            FsValue::NULL => json!({
+                "type": "NULL",
+                "value": null,
+            }),
+            FsValue::Boolean(boolean) => json!({
+                "type": "BOOLEAN",
+                "value": boolean,
+            }),
+            _ => panic!("Unsupported FsValue"),
+        };
         buffer.push_str(json_repr.to_string().as_str())
     }
 }
 
-// TODO(louiskuang): how to deal with the deeply nested match clauses
-// TODO(louiskuang): how to handle error from parsing
-// TODO(louiskuang): how to do check fail in Rust?
-impl From<Value> for FsValue {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Object(map) => match map.get("type") {
-                Some(value_type) => match value_type {
-                    Value::String(type_string) => match type_string.as_str() {
-                        "NULL" => FsValue::from_null_value(map.get("value").unwrap()),
-                        _ => panic!("invalid type string"),
-                    },
-                    _ => panic!("Type field value must be a string"),
-                },
-                None => panic!("FsValue must contain a type field"),
-            },
-            _ => panic!("Failed to parse json value as FsValue"),
-        }
+impl From<serde_json::Number> for FsNumber {
+    fn from(number: serde_json::Number) -> Self {
+        FsNumber::Number(number)
     }
 }
 
 impl FsValue {
-    fn from_null_value(value: &Value) -> FsValue {
-        assert!(value.eq(&Value::Null));
-        FsValue::NULL
+    fn from(json_value: Value) -> Result<FsValue> {
+        let json_value_as_object = json_value
+            .as_object()
+            .expect(&format!("Expecting a JSON object but got {}", json_value));
+        let fs_value_type = json_value_as_object
+            .get("type")
+            .ok_or(FsError::InvalidValue(format!(
+                "Expecting field 'type' in object. Found: {}",
+                json_value.to_string()
+            )))?;
+        let fs_value_type_string = fs_value_type.as_str().expect(&format!(
+            "Expecting string value for field 'type' but found {}",
+            fs_value_type
+        ));
+        let fs_value = json_value_as_object
+            .get("value")
+            .ok_or(FsError::InvalidValue(format!(
+                "Expecting field 'value' in object. Found: {}",
+                json_value.to_string()
+            )))?;
+
+        match fs_value_type_string {
+            "NULL" => FsValue::from_null_value(&fs_value),
+            "BOOLEAN" => FsValue::from_boolean_value(&fs_value),
+            _ => Err(FsError::InvalidType(format!(
+                "Firestore does not support value of type '{}'",
+                fs_value_type_string
+            ))),
+        }
     }
 
-    fn into_null_value(&self) -> Value {
-        json!({
-            "type": "NULL",
-            "value": null,
-        })
+    fn from_null_value(value: &Value) -> Result<FsValue> {
+        if value.eq(&Value::Null) {
+            Ok(FsValue::NULL)
+        } else {
+            Err(FsError::InvalidValue(format!(
+                "Failed to parse {} as a null fsvalue",
+                value
+            )))
+        }
+    }
+
+    fn from_boolean_value(value: &Value) -> Result<FsValue> {
+        let boolean_value = value.as_bool().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as a boolean fsvalue",
+            value
+        )))?;
+        Ok(FsValue::Boolean(boolean_value))
     }
 }
 
@@ -279,7 +327,7 @@ fn fs_value_number(cstr: &core::ffi::CStr) -> FsValue {
     match cstr.to_str() {
         Ok(str) => match FsNumber::from_str(str) {
             Ok(number) => FsValue::Number(number),
-            Err(ParseFsNumberError(err_string)) => panic!("{}", err_string),
+            Err(error) => panic!("{}", error),
         },
         Err(error) => panic!("Failed to parse cstring as a UTF-8 string: {}", error),
     }
