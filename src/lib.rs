@@ -154,6 +154,10 @@ impl FsValue {
                     "value": number,
                 }),
             },
+            FsValue::String(fs_string) => json!({
+                "type": "STRING",
+                "value": fs_string,
+            }),
             FsValue::Array(fs_value_array) => {
                 let mut value_array = Vec::new();
                 for fs_array_element in fs_value_array.iter() {
@@ -193,6 +197,7 @@ impl FsValue {
             "NULL" => FsValue::from_null_value(&fs_value),
             "BOOLEAN" => FsValue::from_boolean_value(&fs_value),
             "NUMBER" => FsValue::from_number_value(&fs_value),
+            "STRING" => FsValue::from_string_value(&fs_value),
             "ARRAY" => FsValue::from_array_value(&fs_value),
             _ => Err(FsError::InvalidType(format!(
                 "Firestore does not support value of type '{}'",
@@ -230,6 +235,14 @@ impl FsValue {
                 value
             ))),
         }
+    }
+
+    fn from_string_value(value: &Value) -> Result<FsValue> {
+        let string_value = value.as_str().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as a string fsvalue",
+            value
+        )))?;
+        Ok(FsValue::String(string_value.to_owned()))
     }
 
     fn from_array_value(value: &Value) -> Result<FsValue> {
@@ -285,8 +298,8 @@ fn fs_value_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_value_string(string: String) -> FsValue {
-    FsValue::String(string)
+fn fs_value_string(string: &str) -> FsValue {
+    FsValue::String(string.to_owned())
 }
 
 #[pg_extern]
@@ -350,6 +363,14 @@ mod tests {
         assert_eq!(
             Spi::get_one::<FsValue>(r#"select '{"type": "NUMBER", "value": 1.1}'::fsvalue"#),
             Ok(Some(fs_value_number_from_double(1.1)))
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_string() {
+        assert_eq!(
+            Spi::get_one::<FsValue>(r#"select '{"type": "STRING", "value": "hello world"}'::fsvalue"#),
+            Ok(Some(fs_value_string("hello world")))
         );
     }
 
