@@ -259,27 +259,27 @@ impl FsValue {
 }
 
 #[pg_extern]
-fn fs_value_null() -> FsValue {
+fn fs_null() -> FsValue {
     FsValue::NULL
 }
 
 #[pg_extern]
-fn fs_value_nan() -> FsValue {
+fn fs_nan() -> FsValue {
     FsValue::Number(FsNumber::NAN)
 }
 
 #[pg_extern]
-fn fs_value_boolean(value: bool) -> FsValue {
+fn fs_boolean(value: bool) -> FsValue {
     FsValue::Boolean(value)
 }
 
 #[pg_extern]
-fn fs_value_number_from_integer(value: i32) -> FsValue {
+fn fs_number_from_integer(value: i32) -> FsValue {
     FsValue::Number(FsNumber::Number(serde_json::Number::from(value)))
 }
 
 #[pg_extern]
-fn fs_value_number_from_double(value: f64) -> FsValue {
+fn fs_number_from_double(value: f64) -> FsValue {
     FsValue::Number(FsNumber::Number(
         serde_json::Number::from_f64(value)
             .expect(&format!("Failed to parse {} as a json number", value)),
@@ -287,7 +287,7 @@ fn fs_value_number_from_double(value: f64) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_value_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
+fn fs_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
     match cstr.to_str() {
         Ok(str) => match FsNumber::from_str(str) {
             Ok(number) => FsValue::Number(number),
@@ -298,12 +298,12 @@ fn fs_value_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_value_string(string: &str) -> FsValue {
+fn fs_string(string: &str) -> FsValue {
     FsValue::String(string.to_owned())
 }
 
 #[pg_extern]
-fn fs_value_bytes(bytes: Vec<u8>) -> FsValue {
+fn fs_bytes(bytes: Vec<u8>) -> FsValue {
     FsValue::Bytes(bytes)
 }
 
@@ -337,20 +337,20 @@ mod tests {
     #[pg_test]
     fn test_fs_nan() {
         assert_eq!(
-            fs_value_number_from_str(CString::new("NaN").expect("CString::new failed").as_c_str()),
-            fs_value_nan()
+            fs_number_from_str(CString::new("NaN").expect("CString::new failed").as_c_str()),
+            fs_nan()
         );
     }
 
     #[pg_test]
     fn test_fs_number_from_str() {
         assert_eq!(
-            fs_value_number_from_str(CString::new("1").expect("CString::new failed").as_c_str()),
-            fs_value_number_from_integer(1)
+            fs_number_from_str(CString::new("1").expect("CString::new failed").as_c_str()),
+            fs_number_from_integer(1)
         );
         assert_eq!(
-            fs_value_number_from_str(CString::new("1.1").expect("CString::new failed").as_c_str()),
-            fs_value_number_from_double(1.1)
+            fs_number_from_str(CString::new("1.1").expect("CString::new failed").as_c_str()),
+            fs_number_from_double(1.1)
         );
     }
 
@@ -358,11 +358,11 @@ mod tests {
     fn test_fs_number() {
         assert_eq!(
             Spi::get_one::<FsValue>(r#"select '{"type": "NUMBER", "value": 1}'::fsvalue"#),
-            Ok(Some(fs_value_number_from_integer(1)))
+            Ok(Some(fs_number_from_integer(1)))
         );
         assert_eq!(
             Spi::get_one::<FsValue>(r#"select '{"type": "NUMBER", "value": 1.1}'::fsvalue"#),
-            Ok(Some(fs_value_number_from_double(1.1)))
+            Ok(Some(fs_number_from_double(1.1)))
         );
     }
 
@@ -370,7 +370,7 @@ mod tests {
     fn test_fs_string() {
         assert_eq!(
             Spi::get_one::<FsValue>(r#"select '{"type": "STRING", "value": "hello world"}'::fsvalue"#),
-            Ok(Some(fs_value_string("hello world")))
+            Ok(Some(fs_string("hello world")))
         );
     }
 
@@ -390,9 +390,9 @@ mod tests {
         assert_eq!(
             array,
             Ok(Some(FsValue::Array(vec![
-                fs_value_number_from_integer(1),
-                fs_value_null(),
-                fs_value_boolean(true)
+                fs_number_from_integer(1),
+                fs_null(),
+                fs_boolean(true)
             ])))
         );
     }
