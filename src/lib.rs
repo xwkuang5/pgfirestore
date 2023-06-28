@@ -121,7 +121,13 @@ impl InOutFuncs for FsValue {
     }
 
     fn output(&self, buffer: &mut StringInfo) {
-        let json_repr = match self {
+        buffer.push_str(self.to_json_value().to_string().as_str())
+    }
+}
+
+impl FsValue {
+    fn to_json_value(&self) -> Value {
+        match &self {
             FsValue::NULL => json!({
                 "type": "NULL",
                 "value": null,
@@ -130,33 +136,38 @@ impl InOutFuncs for FsValue {
                 "type": "BOOLEAN",
                 "value": boolean,
             }),
-            FsValue::Number(fs_number) => {
-                match fs_number {
-                    FsNumber::NAN => json!({
-                        "type": "NUMBER",
-                        "value": "NaN",
-                    }),
-                    FsNumber::PositiveInfinity => json!({
-                        "type": "NUMBER",
-                        "value": "Infinity",
-                    }),
-                    FsNumber::NegativeInfinity => json!({
-                        "type": "NUMBER",
-                        "value": "-Infinity",
-                    }),
-                    FsNumber::Number(number) => json!({
-                        "type": "NUMBER",
-                        "value": number,
-                    })
+            FsValue::Number(fs_number) => match fs_number {
+                FsNumber::NAN => json!({
+                    "type": "NUMBER",
+                    "value": "NaN",
+                }),
+                FsNumber::PositiveInfinity => json!({
+                    "type": "NUMBER",
+                    "value": "Infinity",
+                }),
+                FsNumber::NegativeInfinity => json!({
+                    "type": "NUMBER",
+                    "value": "-Infinity",
+                }),
+                FsNumber::Number(number) => json!({
+                    "type": "NUMBER",
+                    "value": number,
+                }),
+            },
+            FsValue::Array(fs_value_array) => {
+                let mut value_array = Vec::new();
+                for fs_array_element in fs_value_array.iter() {
+                    value_array.push(fs_array_element.to_json_value());
                 }
+                json!({
+                    "type": "ARRAY",
+                    "value": value_array,
+                })
             }
             _ => panic!("Unsupported FsValue"),
-        };
-        buffer.push_str(json_repr.to_string().as_str())
+        }
     }
-}
 
-impl FsValue {
     fn from(json_value: Value) -> Result<FsValue> {
         let json_value_as_object = json_value
             .as_object()
@@ -182,6 +193,7 @@ impl FsValue {
             "NULL" => FsValue::from_null_value(&fs_value),
             "BOOLEAN" => FsValue::from_boolean_value(&fs_value),
             "NUMBER" => FsValue::from_number_value(&fs_value),
+            "ARRAY" => FsValue::from_array_value(&fs_value),
             _ => Err(FsError::InvalidType(format!(
                 "Firestore does not support value of type '{}'",
                 fs_value_type_string
@@ -210,9 +222,26 @@ impl FsValue {
 
     fn from_number_value(value: &Value) -> Result<FsValue> {
         match value {
-            serde_json::Value::Number(number) => Ok(FsValue::Number(FsNumber::from(number.clone()))),
-            _ => Err(FsError::InvalidValue(format!("Expecting a JSON number but found {}", value)))
+            serde_json::Value::Number(number) => {
+                Ok(FsValue::Number(FsNumber::from(number.clone())))
+            }
+            _ => Err(FsError::InvalidValue(format!(
+                "Expecting a JSON number but found {}",
+                value
+            ))),
         }
+    }
+
+    fn from_array_value(value: &Value) -> Result<FsValue> {
+        let array_value = value.as_array().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as an array fsvalue",
+            value
+        )))?;
+        let mut fs_array_value = Vec::new();
+        for array_element in array_value.iter() {
+            fs_array_value.push(FsValue::from(array_element.to_owned())?);
+        }
+        Ok(FsValue::Array(fs_array_value))
     }
 }
 
@@ -227,7 +256,20 @@ fn fs_value_boolean(value: bool) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_value_number(cstr: &core::ffi::CStr) -> FsValue {
+fn fs_value_number_from_integer(value: i32) -> FsValue {
+    FsValue::Number(FsNumber::Number(serde_json::Number::from(value)))
+}
+
+#[pg_extern]
+fn fs_value_number_from_double(value: f64) -> FsValue {
+    FsValue::Number(FsNumber::Number(
+        serde_json::Number::from_f64(value)
+            .expect(&format!("Failed to parse {} as a json number", value)),
+    ))
+}
+
+#[pg_extern]
+fn fs_value_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
     match cstr.to_str() {
         Ok(str) => match FsNumber::from_str(str) {
             Ok(number) => FsValue::Number(number),
@@ -252,8 +294,8 @@ fn fs_value_bytes(cstr: &core::ffi::CStr) -> FsValue {
 
 #[pg_extern]
 fn fs_value_geo(latitude: &core::ffi::CStr, longtitude: &core::ffi::CStr) -> FsValue {
-    let lat = fs_value_number(latitude);
-    let long = fs_value_number(longtitude);
+    let lat = fs_value_number_from_str(latitude);
+    let long = fs_value_number_from_str(longtitude);
     match (lat, long) {
         (FsValue::Number(FsNumber::Number(lat_)), FsValue::Number(FsNumber::Number(long_))) => {
             if !lat_.is_f64() || !long_.is_f64() {
@@ -292,21 +334,49 @@ fn fs_value_samples() -> Vec<FsValue> {
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
-    use pgrx::prelude::*;
+    use crate::*;
     use std::ffi::CString;
 
     #[pg_test]
-    fn test_fs_value() {
-        assert_eq!(crate::FsValue::NULL, crate::fs_value_null());
+    fn test_fs_nan() {
+        assert!(
+            fs_value_number_from_str(CString::new("NaN").expect("CString::new failed").as_c_str())
+                == FsValue::Number(FsNumber::NAN)
+        );
     }
 
     #[pg_test]
     fn test_fs_number() {
-        let nan = CString::new("NaN").expect("CString::new failed");
-        let number_1 = CString::new("1").expect("CString::new failed");
-        assert!(crate::fs_value_number(nan.as_c_str()) == crate::fs_value_number(nan.as_c_str()));
         assert!(
-            crate::fs_value_number(nan.as_c_str()) < crate::fs_value_number(number_1.as_c_str())
+            fs_value_number_from_str(CString::new("1").expect("CString::new failed").as_c_str())
+                == fs_value_number_from_integer(1)
+        );
+        assert!(
+            fs_value_number_from_str(CString::new("1.1").expect("CString::new failed").as_c_str())
+                == fs_value_number_from_double(1.1)
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_array() {
+        let array = Spi::get_one::<FsValue>(
+            r#"select '{
+                "type": "ARRAY",
+                "value": [
+                    {"type": "NUMBER", "value": 1},
+                    {"type": "NULL", "value": null},
+                    {"type": "BOOLEAN", "value": true}
+                ]
+            }'::fsvalue;"#,
+        );
+
+        assert_eq!(
+            array,
+            Ok(Some(FsValue::Array(vec![
+                fs_value_number_from_integer(1),
+                fs_value_null(),
+                fs_value_boolean(true)
+            ])))
         );
     }
 }
