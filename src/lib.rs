@@ -251,6 +251,11 @@ fn fs_value_null() -> FsValue {
 }
 
 #[pg_extern]
+fn fs_value_nan() -> FsValue {
+    FsValue::Number(FsNumber::NAN)
+}
+
+#[pg_extern]
 fn fs_value_boolean(value: bool) -> FsValue {
     FsValue::Boolean(value)
 }
@@ -280,38 +285,17 @@ fn fs_value_number_from_str(cstr: &core::ffi::CStr) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_value_string(cstr: &core::ffi::CStr) -> FsValue {
-    match cstr.to_str() {
-        Ok(str) => FsValue::String(String::from(str)),
-        Err(error) => panic!("Failed to parse cstring as a UTF-8 string: {}", error),
-    }
+fn fs_value_string(string: String) -> FsValue {
+    FsValue::String(string)
 }
 
 #[pg_extern]
-fn fs_value_bytes(cstr: &core::ffi::CStr) -> FsValue {
-    FsValue::Bytes(Vec::from(cstr.to_bytes()))
+fn fs_value_bytes(bytes: Vec<u8>) -> FsValue {
+    FsValue::Bytes(bytes)
 }
 
 #[pg_extern]
-fn fs_value_geo(latitude: &core::ffi::CStr, longtitude: &core::ffi::CStr) -> FsValue {
-    let lat = fs_value_number_from_str(latitude);
-    let long = fs_value_number_from_str(longtitude);
-    match (lat, long) {
-        (FsValue::Number(FsNumber::Number(lat_)), FsValue::Number(FsNumber::Number(long_))) => {
-            if !lat_.is_f64() || !long_.is_f64() {
-                panic!(
-                    "Failed to parse latitude ('{}') and longtitude ('{}') as a Geo point",
-                    lat_, long_
-                )
-            }
-            FsValue::GeoPoint(FsNumber::Number(lat_), FsNumber::Number(long_))
-        }
-        _ => panic!("Failed to parse latitude and longtitude as a Geo point"),
-    }
-}
-
-#[pg_extern]
-fn fs_value_samples() -> Vec<FsValue> {
+fn fs_value_examples() -> Vec<FsValue> {
     vec![
         FsValue::NULL,
         FsValue::Boolean(true),
@@ -339,21 +323,33 @@ mod tests {
 
     #[pg_test]
     fn test_fs_nan() {
-        assert!(
-            fs_value_number_from_str(CString::new("NaN").expect("CString::new failed").as_c_str())
-                == FsValue::Number(FsNumber::NAN)
+        assert_eq!(
+            fs_value_number_from_str(CString::new("NaN").expect("CString::new failed").as_c_str()),
+            fs_value_nan()
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_number_from_str() {
+        assert_eq!(
+            fs_value_number_from_str(CString::new("1").expect("CString::new failed").as_c_str()),
+            fs_value_number_from_integer(1)
+        );
+        assert_eq!(
+            fs_value_number_from_str(CString::new("1.1").expect("CString::new failed").as_c_str()),
+            fs_value_number_from_double(1.1)
         );
     }
 
     #[pg_test]
     fn test_fs_number() {
-        assert!(
-            fs_value_number_from_str(CString::new("1").expect("CString::new failed").as_c_str())
-                == fs_value_number_from_integer(1)
+        assert_eq!(
+            Spi::get_one::<FsValue>(r#"select '{"type": "NUMBER", "value": 1}'::fsvalue"#),
+            Ok(Some(fs_value_number_from_integer(1)))
         );
-        assert!(
-            fs_value_number_from_str(CString::new("1.1").expect("CString::new failed").as_c_str())
-                == fs_value_number_from_double(1.1)
+        assert_eq!(
+            Spi::get_one::<FsValue>(r#"select '{"type": "NUMBER", "value": 1.1}'::fsvalue"#),
+            Ok(Some(fs_value_number_from_double(1.1)))
         );
     }
 
