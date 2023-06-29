@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use pgrx::prelude::*;
 use pgrx::{InOutFuncs, StringInfo};
 use serde::{Deserialize, Serialize};
@@ -158,6 +159,10 @@ impl FsValue {
                 "type": "STRING",
                 "value": fs_string,
             }),
+            FsValue::Bytes(fs_bytes) => json!({
+                "type": "BYTES",
+                "value": general_purpose::STANDARD.encode(fs_bytes),
+            }),
             FsValue::Array(fs_value_array) => {
                 let mut value_array = Vec::new();
                 for fs_array_element in fs_value_array.iter() {
@@ -167,7 +172,7 @@ impl FsValue {
                     "type": "ARRAY",
                     "value": value_array,
                 })
-            },
+            }
             FsValue::Map(fs_value_map) => {
                 let mut value_map = BTreeMap::new();
                 for (key, value) in fs_value_map.iter() {
@@ -177,7 +182,7 @@ impl FsValue {
                     "type": "MAP",
                     "value": value_map,
                 })
-            },
+            }
             _ => panic!("Unsupported FsValue"),
         }
     }
@@ -208,6 +213,7 @@ impl FsValue {
             "BOOLEAN" => FsValue::from_boolean_value(&fs_value),
             "NUMBER" => FsValue::from_number_value(&fs_value),
             "STRING" => FsValue::from_string_value(&fs_value),
+            "BYTES" => FsValue::from_bytes_value(&fs_value),
             "ARRAY" => FsValue::from_array_value(&fs_value),
             "MAP" => FsValue::from_map_value(&fs_value),
             _ => Err(FsError::InvalidType(format!(
@@ -254,6 +260,22 @@ impl FsValue {
             value
         )))?;
         Ok(FsValue::String(string_value.to_owned()))
+    }
+
+    fn from_bytes_value(value: &Value) -> Result<FsValue> {
+        let string_value = value.as_str().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as a string fsvalue",
+            value
+        )))?;
+        general_purpose::STANDARD
+            .decode(string_value)
+            .map(|bytes| FsValue::Bytes(bytes))
+            .map_err(|err| {
+                FsError::InvalidValue(format!(
+                    "Failed to decode value as a base64 byte string: {}",
+                    err
+                ))
+            })
     }
 
     fn from_array_value(value: &Value) -> Result<FsValue> {
@@ -392,8 +414,22 @@ mod tests {
     #[pg_test]
     fn test_fs_string() {
         assert_eq!(
-            Spi::get_one::<FsValue>(r#"select '{"type": "STRING", "value": "hello world"}'::fsvalue"#),
+            Spi::get_one::<FsValue>(
+                r#"select '{"type": "STRING", "value": "hello world"}'::fsvalue"#
+            ),
             Ok(Some(fs_string("hello world")))
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_bytes() {
+        assert_eq!(
+            Spi::get_one::<FsValue>(
+                r#"select concat('{"type": "BYTES", "value": "', encode('helloworld'::bytea, 'base64'), '"}')::fsvalue"#
+            ),
+            Ok(Some(FsValue::Bytes(
+                vec![0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x77, 0x6f, 0x72, 0x6c, 0x64]
+            )))
         );
     }
 
@@ -439,8 +475,8 @@ mod tests {
                 ("foo".to_owned(), fs_number_from_integer(1)),
                 ("bar".to_owned(), fs_null()),
                 ("baz".to_owned(), fs_boolean(true))
-            ])))
-        ));
+            ]))))
+        );
     }
 }
 
