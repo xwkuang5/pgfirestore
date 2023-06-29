@@ -167,7 +167,17 @@ impl FsValue {
                     "type": "ARRAY",
                     "value": value_array,
                 })
-            }
+            },
+            FsValue::Map(fs_value_map) => {
+                let mut value_map = BTreeMap::new();
+                for (key, value) in fs_value_map.iter() {
+                    value_map.insert(key, value.to_json_value());
+                }
+                json!({
+                    "type": "MAP",
+                    "value": value_map,
+                })
+            },
             _ => panic!("Unsupported FsValue"),
         }
     }
@@ -199,6 +209,7 @@ impl FsValue {
             "NUMBER" => FsValue::from_number_value(&fs_value),
             "STRING" => FsValue::from_string_value(&fs_value),
             "ARRAY" => FsValue::from_array_value(&fs_value),
+            "MAP" => FsValue::from_map_value(&fs_value),
             _ => Err(FsError::InvalidType(format!(
                 "Firestore does not support value of type '{}'",
                 fs_value_type_string
@@ -255,6 +266,18 @@ impl FsValue {
             fs_array_value.push(FsValue::from(array_element.to_owned())?);
         }
         Ok(FsValue::Array(fs_array_value))
+    }
+
+    fn from_map_value(value: &Value) -> Result<FsValue> {
+        let map_value = value.as_object().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as a map fsvalue",
+            value
+        )))?;
+        let mut fs_map_value = BTreeMap::new();
+        for (key, value) in map_value.iter() {
+            fs_map_value.insert(key.to_owned(), FsValue::from(value.to_owned())?);
+        }
+        Ok(FsValue::Map(fs_map_value))
     }
 }
 
@@ -395,6 +418,29 @@ mod tests {
                 fs_boolean(true)
             ])))
         );
+    }
+
+    #[pg_test]
+    fn test_fs_map() {
+        let map = Spi::get_one::<FsValue>(
+            r#"select '{
+                "type": "MAP",
+                "value": {
+                    "foo": {"type": "NUMBER", "value": 1},
+                    "bar": {"type": "NULL", "value": null},
+                    "baz": {"type": "BOOLEAN", "value": true}
+                }
+            }'::fsvalue;"#,
+        );
+
+        assert_eq!(
+            map,
+            Ok(Some(FsValue::Map(BTreeMap::from([
+                ("foo".to_owned(), fs_number_from_integer(1)),
+                ("bar".to_owned(), fs_null()),
+                ("baz".to_owned(), fs_boolean(true))
+            ])))
+        ));
     }
 }
 
