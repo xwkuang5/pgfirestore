@@ -356,6 +356,14 @@ fn fs_bytes(bytes: Vec<u8>) -> FsValue {
 }
 
 #[pg_extern]
+fn is_fs_reference(reference: FsValue) -> bool {
+    match reference {
+        FsValue::Reference(_) => true,
+        _ => false,
+    }
+}
+
+#[pg_extern]
 fn fs_value_examples() -> Vec<FsValue> {
     vec![
         FsValue::NULL,
@@ -375,6 +383,17 @@ fn fs_value_examples() -> Vec<FsValue> {
         FsValue::Map(BTreeMap::from([(String::from("a"), FsValue::NULL)])),
     ]
 }
+
+extension_sql!(
+    "\n\
+        CREATE TABLE fs_documents (\n\
+            path fsvalue PRIMARY KEY, \n\
+            properties fsvalue\n\
+            CHECK (is_fs_reference(path))\n\
+        );\n\
+    ",
+    name = "create_main_table",
+);
 
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
@@ -430,9 +449,9 @@ mod tests {
             Spi::get_one::<FsValue>(
                 r#"select concat('{"type": "BYTES", "value": "', encode('helloworld'::bytea, 'base64'), '"}')::fsvalue"#
             ),
-            Ok(Some(FsValue::Bytes(
-                vec![0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x77, 0x6f, 0x72, 0x6c, 0x64]
-            )))
+            Ok(Some(FsValue::Bytes(vec![
+                0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x77, 0x6f, 0x72, 0x6c, 0x64
+            ])))
         );
     }
 
