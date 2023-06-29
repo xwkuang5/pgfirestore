@@ -94,10 +94,13 @@ pub enum FsValue {
     NULL,
     Boolean(bool),
     Number(FsNumber),
+    // TODO(louiskuang): support date type
     Date(pgrx::Date),
     String(String),
     Bytes(Vec<u8>),
+    // TODO(louiskuang): support reference type
     Reference(String),
+    // TODO(louiskuang): support geo point type
     // f64 does not implement Eq because NaN != NaN
     GeoPoint(FsNumber, FsNumber),
     Array(Vec<FsValue>),
