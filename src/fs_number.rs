@@ -1,6 +1,6 @@
+use crate::FsError;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, str::FromStr};
-use crate::FsError;
 
 type Result<T> = std::result::Result<T, FsError>;
 

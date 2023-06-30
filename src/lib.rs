@@ -7,9 +7,12 @@ use std::{collections::BTreeMap, str::FromStr};
 
 mod fs_error;
 mod fs_number;
+mod fs_reference;
 
 use fs_error::FsError;
 use fs_number::FsNumber;
+use fs_reference::FsPath;
+use fs_reference::FsReference;
 
 type Result<T> = std::result::Result<T, FsError>;
 
@@ -50,7 +53,7 @@ pgrx::pg_module_magic!();
  *
  * Reference: {
  *  type: "REFERENCE",
- *  value: "/projects/test-project/databases/test-database/documents/Users/1"
+ *  value: "/projects/test-project/databases/test-database/documents/users/1"
  * }
  *
  * Geo point: {
@@ -98,8 +101,7 @@ pub enum FsValue {
     Date(pgrx::Date),
     String(String),
     Bytes(Vec<u8>),
-    // TODO(louiskuang): support reference type
-    Reference(String),
+    Reference(FsReference),
     // TODO(louiskuang): support geo point type
     // f64 does not implement Eq because NaN != NaN
     GeoPoint(FsNumber, FsNumber),
@@ -162,6 +164,10 @@ impl FsValue {
                 "type": "STRING",
                 "value": fs_string,
             }),
+            FsValue::Reference(reference) => json!({
+                "type": "REFERENCE",
+                "value": reference.to_string(),
+            }),
             FsValue::Bytes(fs_bytes) => json!({
                 "type": "BYTES",
                 "value": general_purpose::STANDARD.encode(fs_bytes),
@@ -216,6 +222,7 @@ impl FsValue {
             "BOOLEAN" => FsValue::from_boolean_value(&fs_value),
             "NUMBER" => FsValue::from_number_value(&fs_value),
             "STRING" => FsValue::from_string_value(&fs_value),
+            "REFERENCE" => FsValue::from_reference_value(&fs_value),
             "BYTES" => FsValue::from_bytes_value(&fs_value),
             "ARRAY" => FsValue::from_array_value(&fs_value),
             "MAP" => FsValue::from_map_value(&fs_value),
@@ -259,15 +266,23 @@ impl FsValue {
 
     fn from_string_value(value: &Value) -> Result<FsValue> {
         let string_value = value.as_str().ok_or(FsError::InvalidValue(format!(
-            "Failed to parse {} as a string fsvalue",
+            "Failed to parse {} as a string",
             value
         )))?;
         Ok(FsValue::String(string_value.to_owned()))
     }
 
+    fn from_reference_value(value: &Value) -> Result<FsValue> {
+        let string_value = value.as_str().ok_or(FsError::InvalidValue(format!(
+            "Failed to parse {} as a string",
+            value
+        )))?;
+        FsReference::from_str(string_value).map(|reference| FsValue::Reference(reference))
+    }
+
     fn from_bytes_value(value: &Value) -> Result<FsValue> {
         let string_value = value.as_str().ok_or(FsError::InvalidValue(format!(
-            "Failed to parse {} as a string fsvalue",
+            "Failed to parse {} as a string",
             value
         )))?;
         general_purpose::STANDARD
@@ -351,6 +366,13 @@ fn fs_string(string: &str) -> FsValue {
 }
 
 #[pg_extern]
+fn fs_reference(string: &str) -> FsValue {
+    FsValue::Reference(
+        FsReference::from_str(string).expect("Failed to parse string as a reference"),
+    )
+}
+
+#[pg_extern]
 fn fs_bytes(bytes: Vec<u8>) -> FsValue {
     FsValue::Bytes(bytes)
 }
@@ -372,9 +394,11 @@ fn fs_value_examples() -> Vec<FsValue> {
         FsValue::Date(pgrx::Date::from(0)),
         FsValue::String(String::from("hello")),
         FsValue::Bytes(vec![0x00, 0x01]),
-        FsValue::Reference(String::from(
-            "/projects/test-project/databases/test-database/documents/Users/1",
-        )),
+        FsValue::Reference(FsReference {
+            project_id: "test-project".to_owned(),
+            database_id: "test-database".to_owned(),
+            path: FsPath(vec![]),
+        }),
         FsValue::GeoPoint(
             FsNumber::from(serde_json::Number::from_f64(1.0).unwrap()),
             FsNumber::from(serde_json::Number::from_f64(2.0).unwrap()),
@@ -440,6 +464,18 @@ mod tests {
                 r#"select '{"type": "STRING", "value": "hello world"}'::fsvalue"#
             ),
             Ok(Some(fs_string("hello world")))
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_reference() {
+        assert_eq!(
+            Spi::get_one::<FsValue>(
+                r#"select '{"type": "REFERENCE", "value": "projects/test-project/databases/test-database/users/1"}'::fsvalue"#
+            ),
+            Ok(Some(fs_reference(
+                "projects/test-project/databases/test-database/users/1"
+            )))
         );
     }
 
