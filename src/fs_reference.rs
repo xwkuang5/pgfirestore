@@ -55,8 +55,16 @@ impl fmt::Display for FsReference {
 }
 
 impl FsReference {
-    fn is_root(&self) -> bool {
+    pub fn is_root(&self) -> bool {
         self.path.0.is_empty()
+    }
+
+    pub fn has_complete_path(&self) -> bool {
+        if self.path.0.is_empty() {
+            true
+        } else {
+            self.path.0.last().unwrap().resource_id.is_some()
+        }
     }
 }
 
@@ -214,6 +222,20 @@ mod tests {
             FsReference::from_str("projects/test-project/databases/test-database/documents/")
                 .unwrap()
                 .is_root()
+        );
+        assert_eq!(
+            FsReference::from_str("projects/test-project/databases/test-database/documents/users")
+                .unwrap()
+                .has_complete_path(),
+            false
+        );
+        assert_eq!(
+            FsReference::from_str(
+                "projects/test-project/databases/test-database/documents/users/1"
+            )
+            .unwrap()
+            .has_complete_path(),
+            true
         )
     }
 }

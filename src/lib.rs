@@ -378,9 +378,9 @@ fn fs_bytes(bytes: Vec<u8>) -> FsValue {
 }
 
 #[pg_extern]
-fn is_fs_reference(reference: FsValue) -> bool {
-    match reference {
-        FsValue::Reference(_) => true,
+fn is_valid_document_key(fs_ref: FsValue) -> bool {
+    match fs_ref {
+        FsValue::Reference(reference) => !reference.is_root() && reference.has_complete_path(),
         _ => false,
     }
 }
@@ -413,7 +413,7 @@ extension_sql!(
         CREATE TABLE fs_documents (\n\
             reference fsvalue PRIMARY KEY, \n\
             properties fsvalue\n\
-            CHECK (is_fs_reference(reference))\n\
+            CHECK (is_valid_document_key(reference))\n\
         );\n\
     ",
     name = "create_main_table",
