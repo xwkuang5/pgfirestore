@@ -30,7 +30,9 @@ impl FromStr for FsReference {
     type Err = FsError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let re = Regex::new(r"projects\/([-\w\d]+)\/databases\/([-\w\d]+)\/([-\w\/\d]*)").unwrap();
+        let re =
+            Regex::new(r"projects\/([-\w\d]+)\/databases\/([-\w\d]+)\/documents\/([-\w\/\d]*)")
+                .unwrap();
         let cap = re
             .captures(s)
             .expect(&format!("Failed to parse {} as a fs reference", s));
@@ -49,6 +51,12 @@ impl fmt::Display for FsReference {
             "projects/{}/databases/{}/{}",
             self.project_id, self.database_id, self.path
         )
+    }
+}
+
+impl FsReference {
+    fn is_root(&self) -> bool {
+        self.path.0.is_empty()
     }
 }
 
@@ -80,6 +88,9 @@ impl FromStr for FsPath {
     type Err = FsError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Ok(FsPath(vec![]));
+        }
         let splits: Vec<&str> = s.split("/").collect();
         let mut paths: Vec<PathElement> = Vec::new();
         if splits.len() >= 2 {
@@ -165,11 +176,13 @@ mod tests {
     #[test]
     fn test_fs_reference() {
         assert_eq!(
-            FsReference::from_str("projects/test-project/databases/test-database-id/users/1")
-                .unwrap(),
+            FsReference::from_str(
+                "projects/test-project/databases/test-database/documents/users/1"
+            )
+            .unwrap(),
             FsReference {
                 project_id: "test-project".to_string(),
-                database_id: "test-database-id".to_string(),
+                database_id: "test-database".to_string(),
                 path: FsPath(vec![PathElement {
                     collection_id: "users".to_string(),
                     resource_id: Some(ResourceId::Number(1))
@@ -177,16 +190,30 @@ mod tests {
             }
         );
         assert_eq!(
-            FsReference::from_str("projects/test-project/databases/test-database-id/users")
+            FsReference::from_str("projects/test-project/databases/test-database/documents/users")
                 .unwrap(),
             FsReference {
                 project_id: "test-project".to_string(),
-                database_id: "test-database-id".to_string(),
+                database_id: "test-database".to_string(),
                 path: FsPath(vec![PathElement {
                     collection_id: "users".to_string(),
                     resource_id: None,
                 }])
             }
         );
+        assert_eq!(
+            FsReference::from_str("projects/test-project/databases/test-database/documents/")
+                .unwrap(),
+            FsReference {
+                project_id: "test-project".to_string(),
+                database_id: "test-database".to_string(),
+                path: FsPath(vec![])
+            }
+        );
+        assert!(
+            FsReference::from_str("projects/test-project/databases/test-database/documents/")
+                .unwrap()
+                .is_root()
+        )
     }
 }

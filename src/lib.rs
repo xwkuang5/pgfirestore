@@ -411,9 +411,9 @@ fn fs_value_examples() -> Vec<FsValue> {
 extension_sql!(
     "\n\
         CREATE TABLE fs_documents (\n\
-            path fsvalue PRIMARY KEY, \n\
+            reference fsvalue PRIMARY KEY, \n\
             properties fsvalue\n\
-            CHECK (is_fs_reference(path))\n\
+            CHECK (is_fs_reference(reference))\n\
         );\n\
     ",
     name = "create_main_table",
@@ -471,10 +471,10 @@ mod tests {
     fn test_fs_reference() {
         assert_eq!(
             Spi::get_one::<FsValue>(
-                r#"select '{"type": "REFERENCE", "value": "projects/test-project/databases/test-database/users/1"}'::fsvalue"#
+                r#"select '{"type": "REFERENCE", "value": "projects/test-project/databases/test-database/documents/users/1"}'::fsvalue"#
             ),
             Ok(Some(fs_reference(
-                "projects/test-project/databases/test-database/users/1"
+                "projects/test-project/databases/test-database/documents/users/1"
             )))
         );
     }
