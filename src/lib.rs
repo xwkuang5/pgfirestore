@@ -386,6 +386,11 @@ fn fs_bytes(bytes: Vec<u8>) -> FsValue {
 }
 
 #[pg_extern]
+fn fs_array(array: Vec<FsValue>) -> FsValue {
+    FsValue::Array(array)
+}
+
+#[pg_extern]
 fn fs_is_valid_document_key(fs_ref: FsValue) -> bool {
     fs_ref
         .as_reference()
@@ -444,6 +449,22 @@ extension_sql!(
         );\n\
     ",
     name = "main_table",
+);
+
+extension_sql!(
+    "\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1'), fs_null());\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/1'), fs_string('hello foo'));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/2'), fs_string('hello bar'));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/2'), fs_boolean(false));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/3'), fs_boolean(true));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/4'), fs_number_from_integer(1));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/5'), fs_number_from_double(1.1));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/posts/1'), fs_reference('/users/1/posts/1'));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/posts/2'), fs_array(ARRAY[fs_string('hello baz')]));\n\
+    ",
+    name = "seed_data",
+    requires = ["main_table"]
 );
 
 extension_sql!(
