@@ -9,6 +9,10 @@ pub struct FsReference {
     pub path: FsPath,
 }
 
+pub const FS_REFERENCE_ROOT: FsReference = FsReference {
+    path: FsPath(vec![]),
+};
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub struct FsPath(pub Vec<PathElement>);
 
@@ -55,6 +59,21 @@ impl FsReference {
         } else {
             self.path.0.last().unwrap().resource_id.is_some()
         }
+    }
+
+    // TODO(louiskuang): this method should return an option
+    pub fn parent(&self) -> FsReference {
+        assert_ne!(self, &FS_REFERENCE_ROOT);
+        FsReference {
+            path: FsPath(self.path.0[0..self.path.0.len() - 1].to_vec()),
+        }
+    }
+
+    // TODO(louiskuang): this method should return an option
+    pub fn collection_id(&self) -> &str {
+        assert_ne!(self, &FS_REFERENCE_ROOT);
+        let last_segment = self.path.0.last().expect("expecting a non-empty path");
+        &last_segment.collection_id
     }
 }
 
@@ -191,12 +210,7 @@ mod tests {
                 }])
             }
         );
-        assert_eq!(
-            FsReference::from_str("/").unwrap(),
-            FsReference {
-                path: FsPath(vec![])
-            }
-        );
+        assert_eq!(FsReference::from_str("/").unwrap(), FS_REFERENCE_ROOT);
         assert!(FsReference::from_str("/").unwrap().is_root());
         assert_eq!(
             FsReference::from_str("/users").unwrap().has_complete_path(),
@@ -208,5 +222,31 @@ mod tests {
                 .has_complete_path(),
             true
         )
+    }
+
+    #[test]
+    fn test_collection_id() {
+        assert_eq!(
+            FsReference::from_str("/users/1").unwrap().collection_id(),
+            "users"
+        );
+        assert_eq!(
+            FsReference::from_str("/users/1/posts/1")
+                .unwrap()
+                .collection_id(),
+            "posts"
+        );
+    }
+
+    #[test]
+    fn test_parent() {
+        assert_eq!(
+            FsReference::from_str("/users/1").unwrap().parent(),
+            FS_REFERENCE_ROOT
+        );
+        assert_eq!(
+            FsReference::from_str("/users/1/posts/1").unwrap().parent(),
+            FsReference::from_str("/users/1").unwrap()
+        );
     }
 }

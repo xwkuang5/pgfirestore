@@ -13,6 +13,7 @@ use fs_error::FsError;
 use fs_number::FsNumber;
 use fs_reference::FsPath;
 use fs_reference::FsReference;
+use fs_reference::FS_REFERENCE_ROOT;
 
 type Result<T> = std::result::Result<T, FsError>;
 
@@ -319,6 +320,13 @@ impl FsValue {
         }
         Ok(FsValue::Map(fs_map_value))
     }
+
+    fn as_reference(&self) -> Option<&FsReference> {
+        match &self {
+            FsValue::Reference(reference) => Some(reference),
+            _ => None,
+        }
+    }
 }
 
 #[pg_extern]
@@ -378,11 +386,32 @@ fn fs_bytes(bytes: Vec<u8>) -> FsValue {
 }
 
 #[pg_extern]
-fn is_valid_document_key(fs_ref: FsValue) -> bool {
-    match fs_ref {
-        FsValue::Reference(reference) => !reference.is_root() && reference.has_complete_path(),
-        _ => false,
-    }
+fn fs_is_valid_document_key(fs_ref: FsValue) -> bool {
+    fs_ref
+        .as_reference()
+        .map(|reference| !reference.is_root() && reference.has_complete_path())
+        .unwrap_or(false)
+}
+
+#[pg_extern]
+fn fs_database_root() -> FsValue {
+    FsValue::Reference(FS_REFERENCE_ROOT)
+}
+
+#[pg_extern]
+fn fs_parent(reference: FsValue) -> FsValue {
+    let fs_ref = reference
+        .as_reference()
+        .expect("expecting a reference type");
+    FsValue::Reference(fs_ref.parent())
+}
+
+#[pg_extern]
+fn fs_collection(reference: FsValue) -> FsValue {
+    let fs_ref = reference
+        .as_reference()
+        .expect("expecting a reference type");
+    fs_string(fs_ref.collection_id())
 }
 
 #[pg_extern]
@@ -411,10 +440,36 @@ extension_sql!(
         CREATE TABLE fs_documents (\n\
             reference fsvalue PRIMARY KEY, \n\
             properties fsvalue\n\
-            CHECK (is_valid_document_key(reference))\n\
+            CHECK (fs_is_valid_document_key(reference))\n\
         );\n\
     ",
-    name = "create_main_table",
+    name = "main_table",
+);
+
+extension_sql!(
+    "\n\
+        CREATE FUNCTION fs_collection(parent fsvalue, collection_id fsvalue) \n\
+        RETURNS TABLE (reference fsvalue, properties fsvalue) AS $$ \n\
+            SELECT * FROM fs_documents \n\
+            WHERE \n\
+                fs_parent(reference) = parent AND \n\
+                fs_collection(reference) = collection_id \n\
+        $$ LANGUAGE SQL; \n\
+    ",
+    name = "collection_tvf",
+    requires = ["main_table"],
+);
+
+extension_sql!(
+    "\n\
+        CREATE FUNCTION fs_collection_group(collection_id fsvalue) \n\
+        RETURNS TABLE (reference fsvalue, properties fsvalue) AS $$ \n\
+            SELECT * FROM fs_documents \n\
+            WHERE fs_collection(reference) = collection_id \n\
+        $$ LANGUAGE SQL; \n\
+    ",
+    name = "collection_group_tvf",
+    requires = ["main_table"],
 );
 
 #[cfg(any(test, feature = "pg_test"))]
