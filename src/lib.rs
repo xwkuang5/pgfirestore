@@ -53,7 +53,7 @@ pgrx::pg_module_magic!();
  *
  * Reference: {
  *  type: "REFERENCE",
- *  value: "/projects/test-project/databases/test-database/documents/users/1"
+ *  value: "/users/1"
  * }
  *
  * Geo point: {
@@ -395,8 +395,6 @@ fn fs_value_examples() -> Vec<FsValue> {
         FsValue::String(String::from("hello")),
         FsValue::Bytes(vec![0x00, 0x01]),
         FsValue::Reference(FsReference {
-            project_id: "test-project".to_owned(),
-            database_id: "test-database".to_owned(),
             path: FsPath(vec![]),
         }),
         FsValue::GeoPoint(
@@ -471,11 +469,9 @@ mod tests {
     fn test_fs_reference() {
         assert_eq!(
             Spi::get_one::<FsValue>(
-                r#"select '{"type": "REFERENCE", "value": "projects/test-project/databases/test-database/documents/users/1"}'::fsvalue"#
+                r#"select '{"type": "REFERENCE", "value": "/users/1"}'::fsvalue"#
             ),
-            Ok(Some(fs_reference(
-                "projects/test-project/databases/test-database/documents/users/1"
-            )))
+            Ok(Some(fs_reference("/users/1")))
         );
     }
 
