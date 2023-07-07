@@ -412,11 +412,11 @@ fn fs_parent(reference: FsValue) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_collection_id(reference: FsValue) -> FsValue {
+fn fs_collection_id(reference: FsValue) -> String {
     let fs_ref = reference
         .as_reference()
         .expect("expecting a reference type");
-    fs_string(fs_ref.collection_id())
+    fs_ref.collection_id().to_string()
 }
 
 #[pg_extern]
@@ -469,7 +469,7 @@ extension_sql!(
 
 extension_sql!(
     "\n\
-        CREATE FUNCTION fs_collection(parent fsvalue, collection_id fsvalue) \n\
+        CREATE FUNCTION fs_collection(parent fsvalue, collection_id text) \n\
         RETURNS TABLE (reference fsvalue, properties fsvalue) AS $$ \n\
             SELECT * FROM fs_documents \n\
             WHERE \n\
@@ -483,7 +483,7 @@ extension_sql!(
 
 extension_sql!(
     "\n\
-        CREATE FUNCTION fs_collection_group(collection_id fsvalue) \n\
+        CREATE FUNCTION fs_collection_group(collection_id text) \n\
         RETURNS TABLE (reference fsvalue, properties fsvalue) AS $$ \n\
             SELECT * FROM fs_documents \n\
             WHERE fs_collection_id(reference) = collection_id \n\

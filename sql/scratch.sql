@@ -16,4 +16,4 @@ insert into fs_documents values (
     fs_reference('/posts/1'), fs_string('hello world')
 );
 
-SELECT * FROM fs_collection(fs_reference('/users/1'), fs_string('posts'));
+SELECT * FROM fs_collection(fs_reference('/users/1'), 'posts');
