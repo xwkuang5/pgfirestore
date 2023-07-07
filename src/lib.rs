@@ -412,7 +412,7 @@ fn fs_parent(reference: FsValue) -> FsValue {
 }
 
 #[pg_extern]
-fn fs_collection(reference: FsValue) -> FsValue {
+fn fs_collection_id(reference: FsValue) -> FsValue {
     let fs_ref = reference
         .as_reference()
         .expect("expecting a reference type");
@@ -474,7 +474,7 @@ extension_sql!(
             SELECT * FROM fs_documents \n\
             WHERE \n\
                 fs_parent(reference) = parent AND \n\
-                fs_collection(reference) = collection_id \n\
+                fs_collection_id(reference) = collection_id \n\
         $$ LANGUAGE SQL; \n\
     ",
     name = "collection_tvf",
@@ -486,7 +486,7 @@ extension_sql!(
         CREATE FUNCTION fs_collection_group(collection_id fsvalue) \n\
         RETURNS TABLE (reference fsvalue, properties fsvalue) AS $$ \n\
             SELECT * FROM fs_documents \n\
-            WHERE fs_collection(reference) = collection_id \n\
+            WHERE fs_collection_id(reference) = collection_id \n\
         $$ LANGUAGE SQL; \n\
     ",
     name = "collection_group_tvf",
