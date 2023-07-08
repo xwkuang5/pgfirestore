@@ -1,25 +1,11 @@
 -- Display `NULL` as `<null>`
-\pset null '<null>'
-
-insert into
-    fs_documents
-values
-    (fs_reference('/users/1'), fs_null());
-
-insert into
-    fs_documents
-values
-    (
-        fs_reference('/users/1/posts/1'),
-        fs_number_from_integer(1)
-    );
-
+\ pset null '<null>'
 insert into
     fs_documents
 values
     (
         fs_reference('/posts/1'),
-        fs_string('hello world')
+        fs_map_from_entries(ARRAY ['foo'], ARRAY [fs_string('bar')])
     );
 
 -- This should fail because the document reference is not valid
@@ -28,7 +14,7 @@ insert into
 values
     (
         fs_reference('/posts'),
-        fs_string('hello world')
+        fs_map_from_entries(ARRAY ['foo'], ARRAY [fs_string('bar')])
     );
 
 -- This should fail because the document reference already exists
@@ -37,14 +23,23 @@ insert into
 values
     (
         fs_reference('/posts/1'),
+        fs_map_from_entries(ARRAY ['foo'], ARRAY [fs_string('bar')])
+    );
+
+-- This should fail because the document properties is not valid
+insert into
+    fs_documents
+values
+    (
+        fs_reference('/posts/2'),
         fs_string('hello world')
     );
 
--- An example collection query
+-- An example collection query against the root
 select
     *
 from
-    fs_collection(fs_reference('/users/1'), 'posts');
+    fs_collection(fs_reference('/'), 'posts');
 
 -- An example recursive field value retrieval
 with base as (

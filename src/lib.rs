@@ -433,6 +433,14 @@ fn fs_is_valid_document_key(fs_ref: FsValue) -> bool {
 }
 
 #[pg_extern]
+fn fs_is_valid_document_properties(properties: FsValue) -> bool {
+    match properties {
+        FsValue::Map(_) => true,
+        _ => false
+    }
+}
+
+#[pg_extern]
 fn fs_database_root() -> FsValue {
     FsValue::Reference(FS_REFERENCE_ROOT)
 }
@@ -543,6 +551,7 @@ extension_sql!(
             reference fsvalue PRIMARY KEY, \n\
             properties fsvalue\n\
             CHECK (fs_is_valid_document_key(reference))\n\
+            CHECK (fs_is_valid_document_properties(properties))\n\
         );\n\
     ",
     name = "main_table",
