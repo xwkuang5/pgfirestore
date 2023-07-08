@@ -454,6 +454,21 @@ fn fs_collection_id(reference: FsValue) -> String {
 }
 
 #[pg_extern]
+fn fs_map_from_entries(keys: Vec<String>, values: Vec<FsValue>) -> FsValue {
+    assert!(
+        keys.len() == values.len(),
+        "Keys size ({}) does not match values size ({})",
+        keys.len(),
+        values.len()
+    );
+    let mut map = BTreeMap::new();
+    for (key, value) in keys.into_iter().zip(values.into_iter()) {
+        map.insert(key, value);
+    }
+    FsValue::Map(map)
+}
+
+#[pg_extern]
 fn fs_map_get(fs_map: FsValue, field_name: &str) -> Option<FsValue> {
     fs_map
         .as_map()
@@ -535,15 +550,15 @@ extension_sql!(
 
 extension_sql!(
     "\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/1'), fs_null());\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/1'), fs_string('hello foo'));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/2'), fs_string('hello bar'));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/2'), fs_boolean(false));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/3'), fs_boolean(true));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/4'), fs_number_from_integer(1));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/users/5'), fs_number_from_double(1.1));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/posts/1'), fs_reference('/users/1/posts/1'));\n\
-    INSERT INTO fs_documents VALUES (fs_reference('/posts/2'), fs_array(ARRAY[fs_string('hello baz')]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1'), fs_map_from_entries(ARRAY['foo', 'bar'], ARRAY[fs_number_from_integer(0), fs_number_from_integer(0)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/1'), fs_map_from_entries(ARRAY['foo', 'bar'], ARRAY[fs_number_from_integer(1), fs_number_from_integer(1)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/1/posts/2'), fs_map_from_entries(ARRAY['foo', 'bar'], ARRAY[fs_number_from_integer(2), fs_number_from_integer(2)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/2'), fs_map_from_entries(ARRAY['foo'], ARRAY[fs_number_from_integer(2)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/3'), fs_map_from_entries(ARRAY['foo'], ARRAY[fs_number_from_integer(3)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/4'), fs_map_from_entries(ARRAY['foo'], ARRAY[fs_number_from_integer(4)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/users/5'), fs_map_from_entries(ARRAY['foo'], ARRAY[fs_number_from_integer(5)]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/posts/1'), fs_map_from_entries(ARRAY['link'], ARRAY[fs_reference('/users/1/posts/1')]));\n\
+    INSERT INTO fs_documents VALUES (fs_reference('/posts/2'), fs_map_from_entries(ARRAY['link'], ARRAY[fs_reference('/users/1/posts/2')]));\n\
     ",
     name = "seed_data",
     requires = ["main_table"]
@@ -796,6 +811,32 @@ mod tests {
                 ("baz".to_owned(), fs_boolean(true))
             ]))))
         );
+    }
+
+    #[pg_test]
+    fn test_fs_map_from_entries() {
+        let map = Spi::get_one::<FsValue>(
+            r#"select '{
+                "type": "MAP",
+                "value": {
+                    "foo": {"type": "NUMBER", "value": 1},
+                    "bar": {"type": "NULL", "value": null},
+                    "baz": {"type": "BOOLEAN", "value": true}
+                }
+            }'::fsvalue;"#,
+        );
+
+        assert_eq!(
+            map,
+            Ok(Some(fs_map_from_entries(
+                vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()],
+                vec![fs_number_from_integer(1), fs_null(), fs_boolean(true)]
+            )))
+        );
+
+        let result =
+            std::panic::catch_unwind(|| fs_map_from_entries(vec!["foo".to_owned()], vec![]));
+        assert!(result.is_err());
     }
 
     #[pg_test]
