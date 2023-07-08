@@ -1,3 +1,6 @@
+-- Display `NULL` as `<null>`
+\pset null '<null>'
+
 insert into
     fs_documents
 values
@@ -63,6 +66,24 @@ with base as (
 )
 select
     (val -> 'qux') -> 'foo'
+from
+    base;
+
+with base as (
+    select
+        fs_array(
+            ARRAY [
+            fs_number_from_integer(1),
+            fs_number_from_integer(2)]
+        ) as val
+)
+select
+    fs_array_contains(val, fs_number_from_integer(0)) as contain_0,
+    fs_array_contains(val, fs_number_from_integer(1)) as contain_1,
+    fs_array_contains_any(
+        val,
+        ARRAY [fs_number_from_integer(1), fs_number_from_integer(0)]
+    ) as contain_0_or_1
 from
     base;
 

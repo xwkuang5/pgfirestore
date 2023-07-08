@@ -322,6 +322,13 @@ impl FsValue {
         }
     }
 
+    fn as_array(&self) -> Option<&Vec<FsValue>> {
+        match &self {
+            FsValue::Array(value) => Some(value),
+            _ => None,
+        }
+    }
+
     fn as_map(&self) -> Option<&BTreeMap<String, FsValue>> {
         match &self {
             FsValue::Map(value) => Some(value),
@@ -389,6 +396,32 @@ fn fs_bytes(bytes: Vec<u8>) -> FsValue {
 #[pg_extern]
 fn fs_array(array: Vec<FsValue>) -> FsValue {
     FsValue::Array(array)
+}
+
+#[pg_extern]
+fn fs_array_contains(fs_array: FsValue, target: FsValue) -> bool {
+    let array = fs_array
+        .as_array()
+        .expect("Expecting an array fsvalue for array_contains operator.");
+    array
+        .iter()
+        .any(|val| fs_eq(val.to_owned(), target.to_owned()))
+}
+
+#[pg_extern]
+fn fs_array_contains_any(fs_array: FsValue, targets: Vec<FsValue>) -> bool {
+    let array = fs_array
+        .as_array()
+        .expect("Expecting an array fsvalue for array_contains operator.");
+
+    for val in array.iter() {
+        for key in targets.iter() {
+            if fs_eq(val.to_owned(), key.to_owned()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 #[pg_extern]
@@ -709,6 +742,36 @@ mod tests {
                 fs_null(),
                 fs_boolean(true)
             ])))
+        );
+    }
+
+    #[pg_test]
+    fn test_fs_array_contains() {
+        let fs_array = FsValue::Array(vec![fs_number_from_integer(1), fs_null(), fs_boolean(true)]);
+
+        assert_eq!(fs_array_contains(fs_array.to_owned(), fs_null()), true);
+        assert_eq!(
+            fs_array_contains(fs_array.to_owned(), fs_boolean(true)),
+            true
+        );
+        assert_eq!(
+            fs_array_contains(fs_array.to_owned(), fs_boolean(false)),
+            false
+        );
+        assert_eq!(
+            fs_array_contains(fs_array.to_owned(), fs_number_from_integer(1)),
+            true
+        );
+        assert_eq!(
+            fs_array_contains(fs_array.to_owned(), fs_number_from_integer(2)),
+            false
+        );
+        assert_eq!(
+            fs_array_contains_any(
+                fs_array.to_owned(),
+                vec![fs_number_from_integer(1), fs_number_from_integer(2)]
+            ),
+            true
         );
     }
 
