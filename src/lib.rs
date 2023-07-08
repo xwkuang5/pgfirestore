@@ -3,6 +3,7 @@ use pgrx::prelude::*;
 use pgrx::{InOutFuncs, StringInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::mem;
 use std::{collections::BTreeMap, str::FromStr};
 
 mod fs_error;
@@ -426,6 +427,47 @@ fn fs_map_get(fs_map: FsValue, field_name: &str) -> Option<FsValue> {
         .and_then(|map| map.get(field_name).map(|value| value.to_owned()))
 }
 
+fn is_same_type(lhs: &FsValue, rhs: &FsValue) -> bool {
+    mem::discriminant(lhs) == mem::discriminant(rhs)
+}
+
+#[pg_extern]
+fn fs_lt(lhs: FsValue, rhs: FsValue) -> bool {
+    is_same_type(&lhs, &rhs) && lhs.lt(&rhs)
+}
+
+#[pg_extern]
+fn fs_gt(lhs: FsValue, rhs: FsValue) -> bool {
+    is_same_type(&lhs, &rhs) && lhs.gt(&rhs)
+}
+
+#[pg_extern]
+fn fs_le(lhs: FsValue, rhs: FsValue) -> bool {
+    is_same_type(&lhs, &rhs) && lhs.le(&rhs)
+}
+
+#[pg_extern]
+fn fs_ge(lhs: FsValue, rhs: FsValue) -> bool {
+    is_same_type(&lhs, &rhs) && lhs.ge(&rhs)
+}
+
+#[pg_extern]
+fn fs_eq(lhs: FsValue, rhs: FsValue) -> bool {
+    lhs.eq(&rhs)
+}
+
+// For any `NULL` operands, this implement the `IS_NOT_NULL` semantics
+// https://cloud.google.com/firestore/docs/query-data/queries#not_equal_
+#[pg_extern]
+fn fs_neq(lhs: FsValue, rhs: FsValue) -> bool {
+    match (lhs.eq(&fs_null()), rhs.eq(&fs_null())) {
+        (true, true) => false,
+        (true, _) => true,
+        (_, true) => true,
+        (_, _) => lhs.ne(&rhs),
+    }
+}
+
 #[pg_extern]
 fn fs_value_examples() -> Vec<FsValue> {
     vec![
@@ -509,6 +551,72 @@ extension_sql!(
         ); \n\
     ",
     name = "document_get",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #< ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_lt \n\
+        ); \n\
+    ",
+    name = "type_clamped_lt",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #> ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_gt \n\
+        ); \n\
+    ",
+    name = "type_clamped_gt",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #<= ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_le \n\
+        ); \n\
+    ",
+    name = "type_clamped_le",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #>= ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_ge \n\
+        ); \n\
+    ",
+    name = "type_clamped_ge",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #!= ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_neq \n\
+        ); \n\
+    ",
+    name = "fs_neq",
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR #= ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = fsvalue, \n\
+            FUNCTION = fs_eq \n\
+        ); \n\
+    ",
+    name = "fs_eq",
 );
 
 #[cfg(any(test, feature = "pg_test"))]
@@ -648,6 +756,72 @@ mod tests {
             Some(fs_null())
         );
         assert_eq!(fs_map_get(map.to_owned(), "quxx"), None);
+    }
+
+    #[pg_test]
+    fn test_fs_le() {
+        assert_eq!(fs_le(fs_null(), fs_boolean(true)), false);
+        assert_eq!(fs_le(fs_null(), fs_number_from_integer(1)), false);
+        assert_eq!(
+            fs_le(fs_number_from_integer(0), fs_number_from_integer(0)),
+            true
+        );
+        assert_eq!(
+            fs_le(fs_number_from_integer(0), fs_number_from_double(0.1)),
+            true
+        );
+        assert_eq!(
+            fs_le(fs_number_from_integer(0), fs_number_from_integer(1)),
+            true
+        );
+        assert_eq!(fs_le(fs_number_from_integer(1), fs_string("foo")), false);
+    }
+
+    #[pg_test]
+    fn test_fs_ge() {
+        assert_eq!(fs_ge(fs_null(), fs_boolean(true)), false);
+        assert_eq!(fs_ge(fs_null(), fs_number_from_integer(1)), false);
+        assert_eq!(
+            fs_ge(fs_number_from_integer(0), fs_number_from_integer(-1)),
+            true
+        );
+        assert_eq!(
+            fs_ge(fs_number_from_integer(0), fs_number_from_integer(0)),
+            true
+        );
+        assert_eq!(
+            fs_ge(fs_number_from_integer(0), fs_number_from_integer(1)),
+            false
+        );
+        assert_eq!(
+            fs_ge(fs_number_from_integer(0), fs_number_from_double(0.1)),
+            false
+        );
+        assert_eq!(fs_ge(fs_number_from_integer(1), fs_string("foo")), false);
+    }
+
+    #[pg_test]
+    fn test_fs_neq() {
+        assert_eq!(fs_neq(fs_null(), fs_null()), false);
+        assert_eq!(fs_neq(fs_null(), fs_boolean(true)), true);
+        assert_eq!(fs_neq(fs_null(), fs_number_from_integer(1)), true);
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_number_from_integer(-1)),
+            true
+        );
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_number_from_integer(0)),
+            false
+        );
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_number_from_integer(1)),
+            true
+        );
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_number_from_double(0.1)),
+            true
+        );
+        assert_eq!(fs_neq(fs_number_from_integer(1), fs_string("foo")), true);
     }
 }
 

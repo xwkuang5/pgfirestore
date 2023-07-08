@@ -6,7 +6,7 @@ An exploration to build a Firestore semantics query engine as a PostgreSQL exten
 
 In no particular order:
 
-1. Implement Firestore hierachical data model
-2. Implement Firestore rules with triggers
-3. Implement Firestore query comparison operators (`<`, `!=`) with type clamping
-4. Implement Firestore array contains operators
+1. Implement Firestore rules with triggers
+2. Implement Firestore array contains operators
+3. Fix mixed numerics comparison
+4. Fix various edge cases around `NaN`
