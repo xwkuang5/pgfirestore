@@ -327,6 +327,13 @@ impl FsValue {
             _ => None,
         }
     }
+
+    fn as_map(&self) -> Option<&BTreeMap<String, FsValue>> {
+        match &self {
+            FsValue::Map(value) => Some(value),
+            _ => None,
+        }
+    }
 }
 
 #[pg_extern]
@@ -420,6 +427,13 @@ fn fs_collection_id(reference: FsValue) -> String {
 }
 
 #[pg_extern]
+fn fs_map_get(fs_map: FsValue, field_name: &str) -> Option<FsValue> {
+    fs_map
+        .as_map()
+        .and_then(|map| map.get(field_name).map(|value| value.to_owned()))
+}
+
+#[pg_extern]
 fn fs_value_examples() -> Vec<FsValue> {
     vec![
         FsValue::NULL,
@@ -491,6 +505,17 @@ extension_sql!(
     ",
     name = "collection_group_tvf",
     requires = ["main_table"],
+);
+
+extension_sql!(
+    "\n\
+        CREATE OPERATOR -> ( \n\
+            LEFTARG = fsvalue, \n\
+            RIGHTARG = text, \n\
+            FUNCTION = fs_map_get \n\
+        ); \n\
+    ",
+    name = "document_get",
 );
 
 #[cfg(any(test, feature = "pg_test"))]
@@ -607,6 +632,29 @@ mod tests {
                 ("baz".to_owned(), fs_boolean(true))
             ]))))
         );
+    }
+
+    #[pg_test]
+    fn test_fs_map_get() {
+        let map = FsValue::Map(BTreeMap::from([
+            ("foo".to_owned(), fs_number_from_integer(1)),
+            ("bar".to_owned(), fs_null()),
+            ("baz".to_owned(), fs_boolean(true)),
+            (
+                "qux".to_owned(),
+                FsValue::Map(BTreeMap::from([("foo".to_owned(), fs_null())])),
+            ),
+        ]));
+
+        assert_eq!(
+            fs_map_get(map.to_owned(), "foo"),
+            Some(fs_number_from_integer(1))
+        );
+        assert_eq!(
+            fs_map_get(fs_map_get(map.to_owned(), "qux").unwrap(), "foo"),
+            Some(fs_null())
+        );
+        assert_eq!(fs_map_get(map.to_owned(), "quxx"), None);
     }
 }
 
