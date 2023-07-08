@@ -550,8 +550,8 @@ extension_sql!(
         CREATE TABLE fs_documents (\n\
             reference fsvalue PRIMARY KEY, \n\
             properties fsvalue\n\
-            CHECK (fs_is_valid_document_key(reference))\n\
-            CHECK (fs_is_valid_document_properties(properties))\n\
+            CONSTRAINT valid_document_key CHECK (fs_is_valid_document_key(reference))\n\
+            CONSTRAINT valid_document_properties CHECK (fs_is_valid_document_properties(properties))\n\
         );\n\
     ",
     name = "main_table",
