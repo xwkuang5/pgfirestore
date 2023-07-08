@@ -73,13 +73,6 @@ pgrx::pg_module_magic!();
  * }
  */
 
-/**
- * pgfirestore=# select pg_column_size(fs_value_string('hello world')), pg_column_size('{"String":"hello world"}'::text), pg_column_size('{"String":"hello world"}'::json), pg_column_size('{"String":"hello world"}'::jsonb);
- * pg_column_size | pg_column_size | pg_column_size | pg_column_size
- * ---------------+----------------+----------------+----------------
- *             24 |             28 |             28 |             33
- */
-
 #[derive(
     Serialize,
     Deserialize,

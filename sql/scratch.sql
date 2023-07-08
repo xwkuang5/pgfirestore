@@ -62,6 +62,16 @@ with base as (
         }' :: fsvalue as val
 )
 select
-    (val->'qux')->'foo'
+    (val -> 'qux') -> 'foo'
 from
     base;
+
+-- Example showing sizes (in-memory) of CBOR vs other representation
+-- pg_column_size | pg_column_size | pg_column_size | pg_column_size
+-- ---------------+----------------+----------------+----------------
+--             24 |             28 |             28 |             33
+select
+    pg_column_size(fs_value_string('hello world')),
+    pg_column_size('{"String":"hello world"}' :: text),
+    pg_column_size('{"String":"hello world"}' :: json),
+    pg_column_size('{"String":"hello world"}' :: jsonb);
