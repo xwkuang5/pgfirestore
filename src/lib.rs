@@ -436,7 +436,7 @@ fn fs_is_valid_document_key(fs_ref: FsValue) -> bool {
 fn fs_is_valid_document_properties(properties: FsValue) -> bool {
     match properties {
         FsValue::Map(_) => true,
-        _ => false
+        _ => false,
     }
 }
 
@@ -599,82 +599,7 @@ extension_sql!(
     requires = ["main_table"],
 );
 
-extension_sql!(
-    "\n\
-        CREATE OPERATOR -> ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = text, \n\
-            FUNCTION = fs_map_get \n\
-        ); \n\
-    ",
-    name = "document_get",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #< ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_lt \n\
-        ); \n\
-    ",
-    name = "type_clamped_lt",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #> ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_gt \n\
-        ); \n\
-    ",
-    name = "type_clamped_gt",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #<= ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_le \n\
-        ); \n\
-    ",
-    name = "type_clamped_le",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #>= ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_ge \n\
-        ); \n\
-    ",
-    name = "type_clamped_ge",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #!= ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_neq \n\
-        ); \n\
-    ",
-    name = "fs_neq",
-);
-
-extension_sql!(
-    "\n\
-        CREATE OPERATOR #= ( \n\
-            LEFTARG = fsvalue, \n\
-            RIGHTARG = fsvalue, \n\
-            FUNCTION = fs_eq \n\
-        ); \n\
-    ",
-    name = "fs_eq",
-);
+extension_sql_file!("../sql/fs_operators.sql");
 
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
