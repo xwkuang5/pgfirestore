@@ -58,9 +58,29 @@ pgfirestore=# SELECT * FROM fs_collection_group('posts') WHERE properties->'foo'
 
 Run `cargo pgrx schema` to list the set of SQL objects defined by the `pgfirestore` extension
 
+### Data Model
+
+`pgfirestore` stores all data in a table named `fs_documents` with the following schema:
+
+```sql
+CREATE TABLE fs_documents (\n\
+    reference fsvalue PRIMARY KEY,
+    properties fsvalue
+    CONSTRAINT valid_document_key CHECK (fs_is_valid_document_key(reference))
+    CONSTRAINT valid_document_properties CHECK (fs_is_valid_document_properties(properties))
+);
+```
+
+Since this is meant only as a simple query engine with no performance expectations, no secondary indexes are defined.
+
+Firestore has a hierachical data model and supports structured queries on collection and collection groups. This is supported in `pgfirestore` using two custom table-valued functions:
+
+- `fs_collection(parent fsvalue, collection_id text)`: returns a table consisting of all `collection_id` documents rooted under `parent`.
+- `fs_collection_group(collection_id text)`: returns a table consisting of all `collection_id` documents rooted under the database root
+
 ### Data Types
 
-pgfirestore extends PostgreSQL by defining a new `fsvalue` type supporting the same set of data types as [firestore](https://firebase.google.com/docs/firestore/manage-data/data-types) with the same type ordering.
+`pgfirestore` extends PostgreSQL by defining a new `fsvalue` type supporting the same set of data types as [firestore](https://firebase.google.com/docs/firestore/manage-data/data-types) with the same type ordering.
 
 ### Representation
 
@@ -131,26 +151,6 @@ Any `PostgreSQL` custom data type can optionally implements an `input_function` 
 - `fs_reference(text)`: constructs a SQL value with type `fsvalue` representing a Firestore reference value
 - `fs_array(ARRAY[fsvalue])`: constructs a SQL value with type `fsvalue` representing a Firestore array value
 - `fs_map_from_entries(ARRAY[text], ARRAY[fsvalue])`: constructs a SQL value with type `fsvalue` representing a shallow Firestore map value
-
-### Data Model
-
-`pgfirestore` stores all data in a heap table named `fs_documents` with the following schema:
-
-```sql
-CREATE TABLE fs_documents (\n\
-    reference fsvalue PRIMARY KEY,
-    properties fsvalue
-    CONSTRAINT valid_document_key CHECK (fs_is_valid_document_key(reference))
-    CONSTRAINT valid_document_properties CHECK (fs_is_valid_document_properties(properties))
-);
-```
-
-Since this is meant only as a simple query engine with no performance expectations, no secondary indexes are defined.
-
-Firestore has a hierachical data model and supports structured queries on collection and collection groups. This is supported in `pgfirestore` using two custom table-valued functions:
-
-- `fs_collection(parent fsvalue, collection_id text)`: returns a table consisting of all `collection_id` documents rooted under `parent`.
-- `fs_collection_group(collection_id text)`: returns a table consisting of all `collection_id` documents rooted under the database root
 
 ### Custom Operators
 
