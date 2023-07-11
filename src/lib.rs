@@ -20,59 +20,6 @@ type Result<T> = std::result::Result<T, FsError>;
 
 pgrx::pg_module_magic!();
 
-/**
- * core::ffi::CStr JSON format
- *
- * Null: {
- *  type: "NULL",
- *  value: null,
- * }
- *
- * Boolean: {
- *  type: "BOOLEAN",
- *  value: true,
- * }
- *
- * Number: {
- *  type: "NUMBER",
- *  value: 1,
- * }
- *
- * Date: {
- *  type: "DATE",
- *  value: 1
- * }
- *
- * String: {
- *  type: "STRING",
- *  value: "hello world"
- * }
- *
- * Bytes: {
- *  type: "BYTES",
- *  value: "0x1234"
- * }
- *
- * Reference: {
- *  type: "REFERENCE",
- *  value: "/users/1"
- * }
- *
- * Geo point: {
- *  type: "GEOPOINT",
- *  value: [1.0, 2.0]
- * }
- *
- * Array: {
- *  type: "ARRAY",
- *  value: [object]
- * }
- *
- * Map: {
- *  type: "MAP",
- *  value: object
- * }
- */
 
 #[derive(
     Serialize,
