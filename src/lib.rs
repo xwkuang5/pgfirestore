@@ -553,8 +553,6 @@ extension_sql!(
     requires = ["main_table"],
 );
 
-extension_sql_file!("../sql/fs_operators.sql");
-
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
