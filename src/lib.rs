@@ -423,7 +423,8 @@ fn fs_map_from_entries(keys: Vec<String>, values: Vec<FsValue>) -> FsValue {
     FsValue::Map(map)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(->)]
 fn fs_map_get(fs_map: FsValue, field_name: &str) -> Option<FsValue> {
     fs_map
         .as_map()
@@ -434,34 +435,40 @@ fn is_same_type(lhs: &FsValue, rhs: &FsValue) -> bool {
     mem::discriminant(lhs) == mem::discriminant(rhs)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#<)]
 fn fs_lt(lhs: FsValue, rhs: FsValue) -> bool {
     is_same_type(&lhs, &rhs) && lhs.lt(&rhs)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#>)]
 fn fs_gt(lhs: FsValue, rhs: FsValue) -> bool {
     is_same_type(&lhs, &rhs) && lhs.gt(&rhs)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#<=)]
 fn fs_le(lhs: FsValue, rhs: FsValue) -> bool {
     is_same_type(&lhs, &rhs) && lhs.le(&rhs)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#>=)]
 fn fs_ge(lhs: FsValue, rhs: FsValue) -> bool {
     is_same_type(&lhs, &rhs) && lhs.ge(&rhs)
 }
 
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#=)]
 fn fs_eq(lhs: FsValue, rhs: FsValue) -> bool {
     lhs.eq(&rhs)
 }
 
 // For any `NULL` operands, this implement the `IS_NOT_NULL` semantics
 // https://cloud.google.com/firestore/docs/query-data/queries#not_equal_
-#[pg_extern]
+#[pg_operator(immutable, parallel_safe)]
+#[opname(#!=)]
 fn fs_neq(lhs: FsValue, rhs: FsValue) -> bool {
     match (lhs.eq(&fs_null()), rhs.eq(&fs_null())) {
         (true, true) => false,
