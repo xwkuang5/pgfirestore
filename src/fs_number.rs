@@ -11,10 +11,14 @@ pub enum FsNumber {
     Number(serde_json::Number),
     PositiveInfinity,
 }
+
 fn cmp_i64_f64(left: i64, right: f64) -> Ordering {
-    // TODO(louiskuang): this cast can lose precision
-    let left_as_f64: f64 = left as f64;
-    left_as_f64.total_cmp(&right)
+    match (left.is_positive(), right.is_sign_positive()) {
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (true, true) => cmp_u64_f64(u64::try_from(left).expect("impossible"), right),
+        (false, false) => cmp_i64_f64(left.abs(), right.abs()).reverse(),
+    }
 }
 
 fn cmp_u64_f64(left: u64, right: f64) -> Ordering {
