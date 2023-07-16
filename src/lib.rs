@@ -20,7 +20,6 @@ type Result<T> = std::result::Result<T, FsError>;
 
 pgrx::pg_module_magic!();
 
-
 #[derive(
     Serialize,
     Deserialize,
@@ -350,9 +349,7 @@ fn fs_array_contains(fs_array: FsValue, target: FsValue) -> bool {
     let array = fs_array
         .as_array()
         .expect("Expecting an array fsvalue for array_contains operator.");
-    array
-        .iter()
-        .any(|val| fs_eq(val.to_owned(), target.to_owned()))
+    array.iter().any(|val| fs_ref_eq(&val, &target))
 }
 
 #[pg_extern]
@@ -363,7 +360,7 @@ fn fs_array_contains_any(fs_array: FsValue, targets: Vec<FsValue>) -> bool {
 
     for val in array.iter() {
         for key in targets.iter() {
-            if fs_eq(val.to_owned(), key.to_owned()) {
+            if fs_ref_eq(val, key) {
                 return true;
             }
         }
@@ -462,7 +459,11 @@ fn fs_ge(lhs: FsValue, rhs: FsValue) -> bool {
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#=)]
 fn fs_eq(lhs: FsValue, rhs: FsValue) -> bool {
-    lhs.eq(&rhs)
+    fs_ref_eq(&lhs, &rhs)
+}
+
+fn fs_ref_eq(lhs: &FsValue, rhs: &FsValue) -> bool {
+    lhs.eq(rhs)
 }
 
 // For any `NULL` operands, this implement the `IS_NOT_NULL` semantics
@@ -470,10 +471,10 @@ fn fs_eq(lhs: FsValue, rhs: FsValue) -> bool {
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#!=)]
 fn fs_neq(lhs: FsValue, rhs: FsValue) -> bool {
-    match (lhs.eq(&fs_null()), rhs.eq(&fs_null())) {
-        (true, true) => false,
-        (true, _) => true,
-        (_, true) => true,
+    match (&lhs, &rhs) {
+        (FsValue::NULL, FsValue::NULL) => false,
+        (FsValue::NULL, _) => true,
+        (_, FsValue::NULL) => true,
         (_, _) => lhs.ne(&rhs),
     }
 }
