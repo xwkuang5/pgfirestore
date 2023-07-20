@@ -63,7 +63,7 @@ Run `cargo pgrx schema` to list the set of SQL objects defined by the `pgfiresto
 `pgfirestore` stores all data in a table named `fs_documents` with the following schema:
 
 ```sql
-CREATE TABLE fs_documents (\n\
+CREATE TABLE fs_documents (
     reference fsvalue PRIMARY KEY,
     properties fsvalue
     CONSTRAINT valid_document_key CHECK (fs_is_valid_document_key(reference))
