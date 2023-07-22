@@ -432,28 +432,32 @@ fn is_same_type(lhs: &FsValue, rhs: &FsValue) -> bool {
     mem::discriminant(lhs) == mem::discriminant(rhs)
 }
 
+fn not_null_nor_nan(val: &FsValue) -> bool {
+    val.ne(&FsValue::NULL) && val.ne(&FsValue::Number(FsNumber::NAN))
+}
+
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#<)]
 fn fs_lt(lhs: FsValue, rhs: FsValue) -> bool {
-    is_same_type(&lhs, &rhs) && lhs.lt(&rhs)
+    not_null_nor_nan(&rhs) && is_same_type(&lhs, &rhs) && lhs.lt(&rhs)
 }
 
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#>)]
 fn fs_gt(lhs: FsValue, rhs: FsValue) -> bool {
-    is_same_type(&lhs, &rhs) && lhs.gt(&rhs)
+    not_null_nor_nan(&rhs) && is_same_type(&lhs, &rhs) && lhs.gt(&rhs)
 }
 
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#<=)]
 fn fs_le(lhs: FsValue, rhs: FsValue) -> bool {
-    is_same_type(&lhs, &rhs) && lhs.le(&rhs)
+    not_null_nor_nan(&rhs) && is_same_type(&lhs, &rhs) && lhs.le(&rhs)
 }
 
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#>=)]
 fn fs_ge(lhs: FsValue, rhs: FsValue) -> bool {
-    is_same_type(&lhs, &rhs) && lhs.ge(&rhs)
+    not_null_nor_nan(&rhs) && is_same_type(&lhs, &rhs) && lhs.ge(&rhs)
 }
 
 #[pg_operator(immutable, parallel_safe)]
@@ -466,16 +470,35 @@ fn fs_ref_eq(lhs: &FsValue, rhs: &FsValue) -> bool {
     lhs.eq(rhs)
 }
 
+#[pg_extern]
+fn fs_is_null(val: FsValue) -> bool {
+    val.eq(&FsValue::NULL)
+}
+
+#[pg_extern]
+fn fs_is_nan(val: FsValue) -> bool {
+    val.eq(&FsValue::Number(FsNumber::NAN))
+}
+
+#[pg_extern]
+fn fs_is_not_null(val: FsValue) -> bool {
+    val.ne(&FsValue::NULL)
+}
+
+#[pg_extern]
+fn fs_is_not_nan(val: FsValue) -> bool {
+    val.ne(&FsValue::Number(FsNumber::NAN)) && val.ne(&FsValue::NULL)
+}
+
 // For any `NULL` operands, this implement the `IS_NOT_NULL` semantics
 // https://cloud.google.com/firestore/docs/query-data/queries#not_equal_
 #[pg_operator(immutable, parallel_safe)]
 #[opname(#!=)]
 fn fs_neq(lhs: FsValue, rhs: FsValue) -> bool {
-    match (&lhs, &rhs) {
-        (FsValue::NULL, FsValue::NULL) => false,
-        (FsValue::NULL, _) => true,
-        (_, FsValue::NULL) => true,
-        (_, _) => lhs.ne(&rhs),
+    match &rhs {
+        FsValue::NULL => false,
+        FsValue::Number(FsNumber::NAN) => fs_is_not_null(lhs),
+        _ => lhs.ne(&rhs),
     }
 }
 
@@ -751,6 +774,10 @@ mod tests {
 
     #[pg_test]
     fn test_fs_le() {
+        assert_eq!(fs_le(fs_null(), fs_null()), false);
+        assert_eq!(fs_le(fs_null(), fs_nan()), false);
+        assert_eq!(fs_le(fs_nan(), fs_null()), false);
+        assert_eq!(fs_le(fs_nan(), fs_nan()), false);
         assert_eq!(fs_le(fs_null(), fs_boolean(true)), false);
         assert_eq!(fs_le(fs_null(), fs_number_from_integer(1)), false);
         assert_eq!(
@@ -770,6 +797,10 @@ mod tests {
 
     #[pg_test]
     fn test_fs_ge() {
+        assert_eq!(fs_ge(fs_null(), fs_null()), false);
+        assert_eq!(fs_ge(fs_null(), fs_nan()), false);
+        assert_eq!(fs_ge(fs_nan(), fs_null()), false);
+        assert_eq!(fs_ge(fs_nan(), fs_nan()), false);
         assert_eq!(fs_ge(fs_null(), fs_boolean(true)), false);
         assert_eq!(fs_ge(fs_null(), fs_number_from_integer(1)), false);
         assert_eq!(
@@ -794,8 +825,17 @@ mod tests {
     #[pg_test]
     fn test_fs_neq() {
         assert_eq!(fs_neq(fs_null(), fs_null()), false);
+        assert_eq!(fs_neq(fs_null(), fs_nan()), false);
         assert_eq!(fs_neq(fs_null(), fs_boolean(true)), true);
         assert_eq!(fs_neq(fs_null(), fs_number_from_integer(1)), true);
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_null()),
+            false,
+        );
+        assert_eq!(
+            fs_neq(fs_number_from_integer(0), fs_nan()),
+            true,
+        );
         assert_eq!(
             fs_neq(fs_number_from_integer(0), fs_number_from_integer(-1)),
             true
