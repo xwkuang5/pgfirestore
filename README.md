@@ -164,6 +164,5 @@ In no particular order:
 
 - Implement Firestore rules with triggers
 - Implement `Date` and `GeoPoint` data type
-- Support switching across different databases
 - Investigate if there is a way in pgrx to declare a pg function that takes references of `fsvalue` instead of an owned value
 - Fix misc method signature issues (borrow by reference where possible)
