@@ -1,4 +1,5 @@
 use crate::FsError;
+use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, str::FromStr};
 
@@ -12,25 +13,15 @@ pub enum FsNumber {
     PositiveInfinity,
 }
 
-fn cmp_i64_f64(left: i64, right: f64) -> Ordering {
-    match (left.is_positive(), right.is_sign_positive()) {
-        (true, false) => Ordering::Greater,
-        (false, true) => Ordering::Less,
-        (true, true) => cmp_u64_f64(u64::try_from(left).expect("impossible"), right),
-        (false, false) => cmp_i64_f64(left.abs(), right.abs()).reverse(),
-    }
-}
-
-fn cmp_u64_f64(left: u64, right: f64) -> Ordering {
-    // TODO(louiskuang): this cast can lose precision
-    let left_as_f64: f64 = left as f64;
-    left_as_f64.total_cmp(&right)
-}
-
 impl From<serde_json::Number> for FsNumber {
     fn from(number: serde_json::Number) -> Self {
         FsNumber::Number(number)
     }
+}
+
+fn number_to_bigdecimal(val: &serde_json::Number) -> BigDecimal {
+    // TODO(louiskuang): parsing error should be thrown at FsNumber construction time.
+    BigDecimal::from_str(val.to_string().as_str()).unwrap()
 }
 
 impl Ord for FsNumber {
@@ -46,47 +37,7 @@ impl Ord for FsNumber {
             (FsNumber::Number(_), FsNumber::PositiveInfinity) => Ordering::Less,
             (FsNumber::Number(_), FsNumber::NegativeInfinity) => Ordering::Greater,
             (FsNumber::Number(left), FsNumber::Number(right)) => {
-                if left.is_i64() {
-                    let left_as_i64 = left.as_i64().unwrap();
-                    if right.is_i64() {
-                        return left_as_i64.cmp(&right.as_i64().unwrap());
-                    } else if right.is_u64() {
-                        let right_as_u64 = right.as_u64().unwrap();
-                        let right_as_i64: std::result::Result<i64, _> = right_as_u64.try_into();
-                        return match right_as_i64 {
-                            Ok(value) => left_as_i64.cmp(&value),
-                            Err(_) => Ordering::Less,
-                        };
-                    } else if right.is_f64() {
-                        return cmp_i64_f64(left_as_i64, right.as_f64().unwrap());
-                    }
-                    panic!("impossible")
-                } else if left.is_u64() {
-                    let left_as_u64 = left.as_u64().unwrap();
-                    if right.is_u64() {
-                        return left_as_u64.cmp(&right.as_u64().unwrap());
-                    } else if right.is_i64() {
-                        let right_as_i64 = right.as_i64().unwrap();
-                        let left_as_i64: std::result::Result<i64, _> = left_as_u64.try_into();
-                        return match left_as_i64 {
-                            Ok(value) => value.cmp(&right_as_i64),
-                            Err(_) => Ordering::Greater,
-                        };
-                    } else if right.is_f64() {
-                        return cmp_u64_f64(left_as_u64, right.as_f64().unwrap());
-                    }
-                    panic!("impossible")
-                } else if left.is_f64() {
-                    let left_as_f64 = left.as_f64().unwrap();
-                    if right.is_f64() {
-                        return left_as_f64.total_cmp(&right.as_f64().unwrap());
-                    } else if right.is_i64() {
-                        return cmp_i64_f64(right.as_i64().unwrap(), left_as_f64).reverse();
-                    } else if right.is_u64() {
-                        return cmp_u64_f64(right.as_u64().unwrap(), left_as_f64).reverse();
-                    }
-                }
-                panic!("impossible")
+                number_to_bigdecimal(left).cmp(&number_to_bigdecimal(right))
             }
         }
     }
@@ -114,5 +65,63 @@ impl FromStr for FsNumber {
                 ))),
             },
         }
+    }
+}
+
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_equal() {
+        assert_eq!(
+            FsNumber::from_str("0")
+                .unwrap()
+                .cmp(&FsNumber::from_str("0").unwrap()),
+            Ordering::Equal
+        );
+        assert_eq!(
+            FsNumber::from_str("0.0")
+                .unwrap()
+                .cmp(&FsNumber::from_str("0.0").unwrap()),
+            Ordering::Equal
+        );
+        assert_eq!(
+            FsNumber::from_str("0")
+                .unwrap()
+                .cmp(&FsNumber::from_str("0.0").unwrap()),
+            Ordering::Equal
+        );
+        assert_eq!(
+            FsNumber::from_str("1")
+                .unwrap()
+                .cmp(&FsNumber::from_str("1.0").unwrap()),
+            Ordering::Equal
+        );
+    }
+
+    fn assert_lt(left: FsNumber, right: FsNumber) {
+        assert_eq!(left.cmp(&right), Ordering::Less);
+        assert_eq!(right.cmp(&left), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_lt() {
+        assert_lt(
+            FsNumber::from_str("0").unwrap(),
+            FsNumber::from_str("1").unwrap(),
+        );
+        assert_lt(
+            FsNumber::from_str("0.0").unwrap(),
+            FsNumber::from_str("1.0").unwrap(),
+        );
+        assert_lt(
+            FsNumber::from_str("0.5").unwrap(),
+            FsNumber::from_str("1").unwrap(),
+        );
+        assert_lt(
+            FsNumber::from_str("0").unwrap(),
+            FsNumber::from_str("0.5").unwrap(),
+        );
     }
 }
