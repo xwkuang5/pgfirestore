@@ -163,7 +163,6 @@ A document in Firestore is a map with arbitrary level of nesting. To retrieve a 
 In no particular order:
 
 - Implement Firestore rules with triggers
-- Fix mixed numerics comparison
 - Implement `Date` and `GeoPoint` data type
 - Support switching across different databases
 - Fix various edge cases around `NaN`
