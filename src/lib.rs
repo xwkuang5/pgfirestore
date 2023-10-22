@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use pgrx::prelude::*;
 use pgrx::{InOutFuncs, StringInfo};
+use pgrx::pgrx_macros::{restrict};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::mem;
@@ -437,9 +438,27 @@ fn not_null_nor_nan(val: &FsValue) -> bool {
 }
 
 #[pg_operator(immutable, parallel_safe)]
+#[restrict(fs_scalarltsel)]
 #[opname(#<)]
 fn fs_lt(lhs: FsValue, rhs: FsValue) -> bool {
     not_null_nor_nan(&rhs) && is_same_type(&lhs, &rhs) && lhs.lt(&rhs)
+}
+
+#[pg_extern(sql = r#"
+CREATE OR REPLACE FUNCTION fs_scalarltsel(internal, oid, internal, integer) RETURNS float8
+STRICT
+LANGUAGE c /* Rust */
+AS '@MODULE_PATHNAME@', '@FUNCTION_NAME@';
+"#)]
+unsafe fn fs_scalarltsel(fcinfo: pg_sys::FunctionCallInfo) -> f64 {
+    use pgrx::fcinfo::pg_getarg;
+    let root = pg_getarg::<pg_sys::Datum>(fcinfo, 0).unwrap().cast_mut_ptr::<pg_sys::PlannerInfo>();
+    let operator = pg_getarg::<pg_sys::Oid>(fcinfo, 1).unwrap();
+    let args = pg_getarg::<pg_sys::Datum>(fcinfo, 2).unwrap().cast_mut_ptr::<pg_sys::List>();
+    let var_relid = pg_getarg::<i32>(fcinfo, 3).unwrap();
+    ::pgrx::info!("operator oid: {:?}", operator);
+    // Vary this from 0.0 to 1.0 to influence the estimates
+    0.0
 }
 
 #[pg_operator(immutable, parallel_safe)]
@@ -828,14 +847,8 @@ mod tests {
         assert_eq!(fs_neq(fs_null(), fs_nan()), false);
         assert_eq!(fs_neq(fs_null(), fs_boolean(true)), true);
         assert_eq!(fs_neq(fs_null(), fs_number_from_integer(1)), true);
-        assert_eq!(
-            fs_neq(fs_number_from_integer(0), fs_null()),
-            false,
-        );
-        assert_eq!(
-            fs_neq(fs_number_from_integer(0), fs_nan()),
-            true,
-        );
+        assert_eq!(fs_neq(fs_number_from_integer(0), fs_null()), false,);
+        assert_eq!(fs_neq(fs_number_from_integer(0), fs_nan()), true,);
         assert_eq!(
             fs_neq(fs_number_from_integer(0), fs_number_from_integer(-1)),
             true
