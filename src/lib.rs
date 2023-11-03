@@ -345,6 +345,18 @@ fn fs_array(array: Vec<FsValue>) -> FsValue {
 }
 
 #[pg_extern]
+fn fs_from_int8(value: i64) -> FsValue {
+    let number = serde_json::Number::from(value);
+    FsValue::Number(FsNumber::Number(number))
+}
+
+#[pg_extern]
+fn fs_from_int4(value: i32) -> FsValue {
+    let number = serde_json::Number::from(value);
+    FsValue::Number(FsNumber::Number(number))
+}
+
+#[pg_extern]
 fn fs_array_contains(fs_array: FsValue, target: FsValue) -> bool {
     let array = fs_array
         .as_array()
@@ -584,6 +596,16 @@ extension_sql!(
     ",
     name = "collection_group_tvf",
     requires = ["main_table"],
+);
+
+extension_sql!(
+    "\n\
+        CREATE CAST (int8 AS fsvalue) \n\
+        WITH FUNCTION fs_from_int8 AS IMPLICIT; \n\
+        CREATE CAST (int4 AS fsvalue) \n\
+        WITH FUNCTION fs_from_int4 AS IMPLICIT; \n\
+    ",
+    name = "type_cast",
 );
 
 #[cfg(any(test, feature = "pg_test"))]
