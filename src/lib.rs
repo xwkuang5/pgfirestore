@@ -461,6 +461,15 @@ fn fs_ge(lhs: FsValue, rhs: FsValue) -> bool {
 }
 
 #[pg_operator(immutable, parallel_safe)]
+#[opname(+)]
+fn fs_add(lhs: FsValue, rhs: FsValue) -> FsValue {
+    match (lhs, rhs) {
+        (FsValue::Number(l), FsValue::Number(r)) => FsValue::Number(l + r),
+        _ => panic!("Expecting number type"),
+    }
+}
+
+#[pg_operator(immutable, parallel_safe)]
 #[opname(#=)]
 fn fs_eq(lhs: FsValue, rhs: FsValue) -> bool {
     fs_ref_eq(&lhs, &rhs)
@@ -828,14 +837,8 @@ mod tests {
         assert_eq!(fs_neq(fs_null(), fs_nan()), false);
         assert_eq!(fs_neq(fs_null(), fs_boolean(true)), true);
         assert_eq!(fs_neq(fs_null(), fs_number_from_integer(1)), true);
-        assert_eq!(
-            fs_neq(fs_number_from_integer(0), fs_null()),
-            false,
-        );
-        assert_eq!(
-            fs_neq(fs_number_from_integer(0), fs_nan()),
-            true,
-        );
+        assert_eq!(fs_neq(fs_number_from_integer(0), fs_null()), false,);
+        assert_eq!(fs_neq(fs_number_from_integer(0), fs_nan()), true,);
         assert_eq!(
             fs_neq(fs_number_from_integer(0), fs_number_from_integer(-1)),
             true

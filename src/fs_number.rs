@@ -1,6 +1,7 @@
 use crate::FsError;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
+use std::ops::Add;
 use std::{cmp::Ordering, str::FromStr};
 
 type Result<T> = std::result::Result<T, FsError>;
@@ -22,6 +23,31 @@ impl From<serde_json::Number> for FsNumber {
 fn number_to_bigdecimal(val: &serde_json::Number) -> BigDecimal {
     // TODO(louiskuang): parsing error should be thrown at FsNumber construction time.
     BigDecimal::from_str(val.to_string().as_str()).unwrap()
+}
+
+fn number_from_bigdecimal(val: &BigDecimal) -> FsNumber {
+    // TODO(louiskuang): parsing error should be thrown at FsNumber construction time.
+    FsNumber::Number(serde_json::Number::from_str(val.to_string().as_str()).unwrap())
+}
+
+impl Add for FsNumber {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (FsNumber::NAN, _) => FsNumber::NAN,
+            (_, FsNumber::NAN) => FsNumber::NAN,
+            (FsNumber::NegativeInfinity, _) => FsNumber::NegativeInfinity,
+            (FsNumber::PositiveInfinity, _) => FsNumber::PositiveInfinity,
+            (_, FsNumber::PositiveInfinity) => FsNumber::PositiveInfinity,
+            (_, FsNumber::NegativeInfinity) => FsNumber::NegativeInfinity,
+            (FsNumber::Number(l), FsNumber::Number(r)) => {
+                let left = number_to_bigdecimal(&l);
+                let right = number_to_bigdecimal(&r);
+                number_from_bigdecimal(&(left + right))
+            }
+        }
+    }
 }
 
 impl Ord for FsNumber {
@@ -122,6 +148,22 @@ mod tests {
         assert_lt(
             FsNumber::from_str("0").unwrap(),
             FsNumber::from_str("0.5").unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_add() {
+        assert_eq!(
+            FsNumber::from_str("0").unwrap() + FsNumber::from_str("1").unwrap(),
+            FsNumber::from_str("1").unwrap(),
+        );
+        assert_eq!(
+            FsNumber::from_str("1").unwrap() + FsNumber::from_str("1").unwrap(),
+            FsNumber::from_str("2").unwrap(),
+        );
+        assert_eq!(
+            FsNumber::from_str("0.5").unwrap() + FsNumber::from_str("1").unwrap(),
+            FsNumber::from_str("1.5").unwrap(),
         );
     }
 }
