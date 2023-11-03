@@ -37,6 +37,8 @@ impl Add for FsNumber {
         match (self, other) {
             (FsNumber::NAN, _) => FsNumber::NAN,
             (_, FsNumber::NAN) => FsNumber::NAN,
+            (FsNumber::NegativeInfinity, FsNumber::PositiveInfinity) => FsNumber::NAN,
+            (FsNumber::PositiveInfinity, FsNumber::NegativeInfinity) => FsNumber::NAN,
             (FsNumber::NegativeInfinity, _) => FsNumber::NegativeInfinity,
             (FsNumber::PositiveInfinity, _) => FsNumber::PositiveInfinity,
             (_, FsNumber::PositiveInfinity) => FsNumber::PositiveInfinity,
